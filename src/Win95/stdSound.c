@@ -11,7 +11,7 @@
 
 flex_t stdSound_fMenuVolume = 1.0f;
 
-#ifndef TARGET_TWL
+#if !defined(TARGET_TWL) && !defined(TARGET_ESP32)
 uint32_t stdSound_ParseWav(stdFile_t sound_file, uint32_t *nSamplesPerSec, int32_t *bitsPerSample, int32_t *bStereo, int32_t *seekOffset)
 {
     unsigned int result; // eax

@@ -38,7 +38,7 @@ extern "C" {
 #define PLAT_MISSING_WIN32
 #endif
 
-#if defined(LINUX) || defined(TARGET_TWL)
+#if defined(LINUX) || defined(TARGET_TWL) || defined(TARGET_ESP32)
 #define FS_POSIX
 #endif
 
@@ -435,6 +435,11 @@ typedef stdMaxmodBuffer stdSound_3dBuffer_t;
 #ifdef STDSOUND_DREAMCAST
 typedef stdSoundDreamcastBuffer stdSound_buffer_t;
 typedef stdSoundDreamcastBuffer stdSound_3dBuffer_t;
+#endif
+
+#ifdef STDSOUND_ESP32
+typedef stdEsp32SoundBuffer stdSound_buffer_t;
+typedef stdEsp32SoundBuffer stdSound_3dBuffer_t;
 #endif
 
 #endif // STDSOUND_OPENAL

@@ -414,7 +414,9 @@
 // Software (CPU) renderer — DESKTOP ONLY. TWL/DC (TARGET_RETRO_HOMEBREW) lack the CPU headroom
 // to rasterize in software, so the whole feature (and its rdAFRaster/rdZRaster source files,
 // which are entirely #ifdef'd on this define) gates off there.
-#if !defined(TARGET_RETRO_HOMEBREW)
+// ESP32-P4 (TARGET_ESP32): retro-homebrew memory diet, but the P4 has the CPU
+// headroom (and no 3D hardware), so the software rasterizer IS the renderer.
+#if !defined(TARGET_RETRO_HOMEBREW) || defined(TARGET_ESP32)
 #define RDRASTER_SOFTWARE_RENDERER
 #endif
 
@@ -473,7 +475,7 @@ extern int Window_isHiDpi;
 // - float for original game behavior
 // - double to verify flex_t vs flex32_t vs cog_flex_t is working
 // - TODO: fixed point support?
-#ifdef TARGET_DREAMCAST
+#if defined(TARGET_DREAMCAST) || defined(TARGET_ESP32)
 // All single precision, no double anywhere. TEST: on -m4-single the SH4 sits in single
 // mode and flips FPSCR PR (+ float<->double converts) for every double op. flex_t=float
 // with the collision code's many flex_d_t (double) locals means constant single/double

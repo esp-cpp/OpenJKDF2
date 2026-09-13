@@ -10,6 +10,9 @@
 #include "Platform/TWL/dlmalloc.h"
 #endif
 
+#ifdef TARGET_ESP32
+#include "jk_esp.h"
+#endif
 #ifdef TARGET_DREAMCAST
 #include <malloc.h>                  // KOS/newlib memalign for the overflow fallback
 #include <unistd.h>                  // sbrk (current heap break, for free-RAM stats)
@@ -246,6 +249,26 @@ static void* Linux_realloc(void* ptr, uint32_t len)
 {
     return realloc(ptr, len);
 }
+
+#ifdef TARGET_ESP32
+// Engine heap in PSRAM (falls back to internal RAM); zeroed like Linux_alloc.
+static void* ESP32_alloc(uint32_t len)
+{
+    void* ret = jk_esp_malloc(len);
+    if (ret) {
+        memset(ret, 0, len);
+    }
+    return ret;
+}
+static void ESP32_free(void* ptr)
+{
+    jk_esp_free(ptr);
+}
+static void* ESP32_realloc(void* ptr, uint32_t len)
+{
+    return jk_esp_realloc(ptr, len);
+}
+#endif
 
 #ifdef TARGET_TWL
 
@@ -1073,6 +1096,11 @@ void stdPlatform_InitServices(HostServices *handlers)
     handlers->free = TWL_free;
     handlers->realloc = TWL_realloc;
     handlers->suggestHeap = TWL_suggestHeap;
+#endif
+#ifdef TARGET_ESP32
+    handlers->alloc = ESP32_alloc;
+    handlers->free = ESP32_free;
+    handlers->realloc = ESP32_realloc;
 #endif
 
 #ifdef TARGET_DREAMCAST

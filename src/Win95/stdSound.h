@@ -113,6 +113,30 @@ typedef struct stdMaxmodBuffer
 } stdMaxmodBuffer;
 #endif
 
+#ifdef STDSOUND_ESP32
+// Software-mixed PCM buffer for the ESP32 port (see Platform/ESP32/stdSound.c)
+typedef struct stdEsp32SoundBuffer
+{
+    void* data;
+    int format;          // stdEsp32SoundFormat
+    int bStereo;
+    int bitsPerSample;
+    uint32_t nSamplesPerSec;
+    int bufferBytes;
+    int bufferLen;
+    int refcnt;
+    flex_t vol;
+    flex_t pan;          // -1 .. 1
+    int bIsCopy;
+    rdVector3 pos;
+    rdVector3 vel;
+    uint32_t currentSample; // 16.16 fixed-point position in source frames
+    BOOL isPlaying;
+    BOOL isLooping;
+    int freq;            // playback frequency override (0 = native)
+} stdEsp32SoundBuffer;
+#endif
+
 #ifdef STDSOUND_DREAMCAST
 typedef struct stdSoundDreamcastBuffer {
     void* data;
