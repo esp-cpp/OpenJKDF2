@@ -11,6 +11,7 @@
 #endif
 
 #ifdef TARGET_ESP32
+#include <sys/stat.h>
 #include "jk_esp.h"
 #endif
 #ifdef TARGET_DREAMCAST
@@ -112,21 +113,32 @@ for (int i = 0; i < len; i++)
     //printf("open: %s %s\n", fpath, mode);
 
     stdFile_t ret;
+    const char* openPath = tmp;
+#ifdef TARGET_ESP32
+    // ESP-IDF's VFS has no working directory: make relative paths absolute
+    // under the game directory (FatFs long-name matching is already
+    // case-insensitive, so no fcaseopen scan is needed).
+    char espAbs[512];
+    if (tmp[0] != '/') {
+        snprintf(espAbs, sizeof(espAbs), "%s/%s", jk_esp_game_dir(), tmp);
+        openPath = espAbs;
+    }
+#endif
 #ifndef TARGET_RETRO_HOMEBREW
-    ret = (stdFile_t)fcaseopen(tmp, mode);
+    ret = (stdFile_t)fcaseopen(openPath, mode);
 #else
     if (mode[0] != 'w') {
         struct stat statstuff;
-        int exists = stat(tmp, &statstuff) >= 0;
+        int exists = stat(openPath, &statstuff) >= 0;
         if (exists) {
-            ret = (stdFile_t)fopen(tmp, mode);
+            ret = (stdFile_t)fopen(openPath, mode);
         }
         else {
             return 0;
         }
     }
     else {
-        ret = (stdFile_t)fopen(tmp, mode);
+        ret = (stdFile_t)fopen(openPath, mode);
     }
 #endif
     //printf("File open `%s`->`%s` mode `%s`, ret %x\n", fpath, tmp, mode, ret);
@@ -251,6 +263,12 @@ static void* Linux_realloc(void* ptr, uint32_t len)
 }
 
 #ifdef TARGET_ESP32
+void stdPlatform_PrintHeapStats()
+{
+    extern void jk_esp_print_heap(void);
+    jk_esp_print_heap();
+}
+
 // Engine heap in PSRAM (falls back to internal RAM); zeroed like Linux_alloc.
 static void* ESP32_alloc(uint32_t len)
 {

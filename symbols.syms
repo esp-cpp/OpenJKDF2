@@ -331,7 +331,7 @@ std3D_gpuMaxTexSizeMaybe 0x0053D668 int32_t = 1
 std3D_dword_53D66C 0x0053D66C int32_t = 1
 std3D_dword_53D670 0x0053D670 int32_t = 0x100
 std3D_dword_53D674 0x0053D674 int32_t = 0x100
-std3D_frameCount 0c0053d678 int32_t = 1
+std3D_frameCount 0x0053d678 int32_t = 1
 std3D_renderList 0x0055C7D0 intptr_t
 std3D_numCachedTextures 0x0055C7F4 int32_t
 std3D_pFirstTexCache 0x0055C7F8 rdDDrawSurface*

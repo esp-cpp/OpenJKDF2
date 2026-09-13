@@ -386,6 +386,7 @@ typedef struct stdALBuffer stdALBuffer;
 typedef struct stdMaxmodBuffer stdMaxmodBuffer;
 typedef struct stdSoundDreamcastBuffer stdSoundDreamcastBuffer;
 typedef struct stdNullSoundBuffer stdNullSoundBuffer;
+typedef struct stdEsp32SoundBuffer stdEsp32SoundBuffer;
 typedef struct stdFontCharset stdFontCharset;
 #ifndef RDCACHE_RENDER_NGONS
 typedef struct rdTri rdTri;

@@ -85,8 +85,11 @@ void std3D_UnloadAllTextures()
     std3D_PurgeEntireTextureCache();
 }
 
+#ifndef RDCACHE_RENDER_NGONS
 void std3D_AddRenderListTris(rdTri *tris, unsigned int num_tris) {}
+#else
 void std3D_AddRenderListNGons(rdNGon *ngons, unsigned int num_ngons) {}
+#endif
 void std3D_AddRenderListLines(rdLine* lines, uint32_t num_lines) {}
 int std3D_AddRenderListVertices(D3DVERTEX *vertex_array, int count) { return 1; }
 

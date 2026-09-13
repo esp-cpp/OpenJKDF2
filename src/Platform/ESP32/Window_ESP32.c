@@ -53,6 +53,7 @@ extern int Window_needsRecreate;
 int Window_bFlipRequested = 0;
 
 static int Window_bStarted = 0;
+static int jkPlayer_enableVsync_last = 0;
 static jk_esp_input_t Window_lastInput;
 
 // Map the logical 1280x720 touch position onto the 640x480 (4:3, centered)
@@ -257,6 +258,4 @@ void Window_SdlVblank()
     if (Main_bHeadless) return;
 }
 
-void Window_SetHiDpi(int val) {}
-void Window_SetFullscreen(int val) {}
 void Window_RecreateSDL2Window() {}
