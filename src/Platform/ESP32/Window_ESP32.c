@@ -164,6 +164,15 @@ void jk_esp_engine_shutdown(void)
     if (jkPlayer_bHasLoadedSettingsOnce) {
         jkPlayer_WriteConf(jkPlayer_playerShortName);
     }
+    // The platform quits from anywhere (usually mid-level), which skips the
+    // GUI state machine's gameplay teardown: close the level like leaving
+    // gameplay for the main menu does (frees the world, clears
+    // jkGame_isDDraw and the cameras' focus things), otherwise the next
+    // launch in this process inherits the stale state.
+    if (jkMain_bInit || jkGame_isDDraw) {
+        jk_esp_log("shutdown: leaving gameplay (bInit=%d isDDraw=%d)", jkMain_bInit, jkGame_isDDraw);
+        jkMain_GameplayLeave(JK_GAMEMODE_GAMEPLAY, JK_GAMEMODE_MAIN);
+    }
     Main_Shutdown();
     Window_bStarted = 0;
 }
