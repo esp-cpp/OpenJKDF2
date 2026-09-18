@@ -368,6 +368,14 @@ int stdFileUtil_FindNext(stdFileSearch *a1, stdFileSearchResult *a2)
     if ( !a1 )
         return 0;
 
+#ifdef TARGET_ESP32
+    if (a1->isNotFirst)
+    {
+        // isNotFirst holds (last returned index + 1); see the scan branch below
+        int idx = a1->isNotFirst++;
+        iter = idx < a1->nFoundFiles ? a1->namelist[idx] : NULL;
+    }
+#else
     if (a1->isNotFirst++)
     {
         if (a1->isNotFirst >= a1->nFoundFiles)
@@ -375,6 +383,7 @@ int stdFileUtil_FindNext(stdFileSearch *a1, stdFileSearchResult *a2)
         else
             iter = a1->namelist[a1->isNotFirst];
     }
+#endif
     else
     {
 #ifdef TARGET_DREAMCAST
@@ -426,15 +435,37 @@ int stdFileUtil_FindNext(stdFileSearch *a1, stdFileSearchResult *a2)
         errno = 0;
 #endif
         a1->nFoundFiles = scandir(tmp, &a1->namelist, search_ext ? parse_ext : NULL, alphasort);
+#if defined(TARGET_ESP32) && defined(JK_ESP_FS_DEBUG)
+        {
+            extern void jk_esp_log(const char* fmt, ...);
+            jk_esp_log("find '%s' ext '%s': %d entries", tmp, search_ext ? search_ext : "(none)", a1->nFoundFiles);
+            for (int i = 0; i < a1->nFoundFiles && a1->namelist; i++) jk_esp_log("  [%d] %s", i, a1->namelist[i]->d_name);
+        }
+#endif
         
         if (!a1->namelist || a1->nFoundFiles <= 0) return 0;
-        
+
+#ifdef TARGET_ESP32
+        // ESP-IDF's FAT VFS does not return "." and "..", so don't assume the
+        // first two entries are those: skip however many there actually are.
+        int firstIdx = 0;
+        while (firstIdx < a1->nFoundFiles
+               && (!strcmp(a1->namelist[firstIdx]->d_name, ".") || !strcmp(a1->namelist[firstIdx]->d_name, "..")))
+            firstIdx++;
+        iter = firstIdx < a1->nFoundFiles ? a1->namelist[firstIdx] : NULL;
+        a1->isNotFirst = firstIdx + 1;
+    }
+
+    if (!iter)
+        return 0;
+#else
         iter = a1->namelist[2];
         a1->isNotFirst = 2;
     }
 
     if (a1->nFoundFiles <= 2 || !iter)
         return 0;
+#endif
 
     strncpy(a2->fpath, iter->d_name, sizeof(a2->fpath));
 
@@ -512,7 +543,13 @@ void stdFileUtil_RmDir(const char *path)
 }
 
 // https://stackoverflow.com/questions/2336242/recursive-mkdir-system-call-on-unix
+#ifdef TARGET_ESP32
+#include "jk_esp_fs.h"
+#endif
 static void _mkdir(const char *dir, int perms) {
+#ifdef TARGET_ESP32
+    jk_esp_fs_dir_cache_reset();
+#endif
     char tmp[256];
     char *p = NULL;
     size_t len;

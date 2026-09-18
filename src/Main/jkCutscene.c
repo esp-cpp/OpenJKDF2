@@ -276,6 +276,12 @@ int jkCutscene_sub_421310(char* fpath)
     if (jkPlayer_setDisableCutscenes) {
         return 1;
     }
+#if defined(TARGET_ESP32)
+    // TODO: present SMK frames through the ESP32 platform layer; until then
+    // skip the videos (the DSi port does the same).
+    printf("vid skip %s\n", fpath);
+    return 1;
+#endif
 
     char tmp[512];
     size_t len = _strlen(fpath);

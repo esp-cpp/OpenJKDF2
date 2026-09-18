@@ -259,7 +259,21 @@ int stdConffile_ReadArgs()
     return 1;
 }
 
+#if defined(TARGET_ESP32) && defined(JK_ESP_FS_DEBUG)
+#include "jk_esp.h"
+uint64_t jk_esp_io_usLine = 0; uint32_t jk_esp_io_nLine = 0;
+static int stdConffile_ReadLine_impl(void);
 int stdConffile_ReadLine()
+{
+    uint64_t t0 = jk_esp_time_us();
+    int r = stdConffile_ReadLine_impl();
+    jk_esp_io_usLine += jk_esp_time_us() - t0; jk_esp_io_nLine++;
+    return r;
+}
+static int stdConffile_ReadLine_impl(void)
+#else
+int stdConffile_ReadLine()
+#endif
 {
   char *line_iter;
   int is_eol;

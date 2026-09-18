@@ -13,6 +13,8 @@
 #ifdef TARGET_ESP32
 #include <sys/stat.h>
 #include "jk_esp.h"
+#include "jk_esp_fs.h"
+#include "jk_esp_file.h"
 #endif
 #ifdef TARGET_DREAMCAST
 #include <malloc.h>                  // KOS/newlib memalign for the overflow fallback
@@ -129,13 +131,44 @@ for (int i = 0; i < len; i++)
 #else
     if (mode[0] != 'w') {
         struct stat statstuff;
+#if defined(TARGET_ESP32) && defined(JK_ESP_FS_DEBUG)
+        static uint32_t nStat = 0, nHit = 0;
+        static uint64_t usStat = 0, usOpen = 0;
+        uint64_t t0 = jk_esp_time_us();
+#endif
+#ifdef TARGET_ESP32
+        // Most lookups probe the SD card for files that only exist inside the
+        // GOBs (resource/3do/..., mat/..., episode/JK1/...), and every stat on
+        // FatFs costs ~2 ms. Remember which directories do not exist and skip
+        // the probe for anything inside them.
+        int exists = jk_esp_fs_dir_might_exist(openPath) ? (stat(openPath, &statstuff) >= 0) : 0;
+#else
         int exists = stat(openPath, &statstuff) >= 0;
+#endif
+#if defined(TARGET_ESP32) && defined(JK_ESP_FS_DEBUG)
+        usStat += jk_esp_time_us() - t0;
+        nStat++;
+#endif
         if (exists) {
+#if defined(TARGET_ESP32) && defined(JK_ESP_FS_DEBUG)
+            t0 = jk_esp_time_us();
+#endif
             ret = (stdFile_t)fopen(openPath, mode);
+#if defined(TARGET_ESP32) && defined(JK_ESP_FS_DEBUG)
+            usOpen += jk_esp_time_us() - t0;
+            nHit++;
+#endif
         }
         else {
-            return 0;
+            ret = 0;
         }
+#if defined(TARGET_ESP32) && defined(JK_ESP_FS_DEBUG)
+        if ((nStat % 200) == 0) {
+            jk_esp_log("fs: %lu stats (%lu ms), %lu opens (%lu ms)", (unsigned long)nStat, (unsigned long)(usStat / 1000),
+                       (unsigned long)nHit, (unsigned long)(usOpen / 1000));
+        }
+#endif
+        if (!exists) return 0;
     }
     else {
         ret = (stdFile_t)fopen(openPath, mode);
@@ -179,10 +212,29 @@ static size_t Linux_stdFileWrite(stdFile_t hGobFile, void* dst, size_t len)
     return fwrite(dst, 1, len, (FILE*)hGobFile);
 }
 
+#if defined(TARGET_ESP32) && defined(JK_ESP_FS_DEBUG)
+uint64_t jk_esp_io_usGets = 0, jk_esp_io_usSeek = 0, jk_esp_io_usRead = 0;
+uint32_t jk_esp_io_nGets = 0, jk_esp_io_nSeek = 0, jk_esp_io_nRead = 0;
+#define JK_IO_T0() uint64_t _io_t0 = jk_esp_time_us()
+#define JK_IO_ACC(us, n) do { us += jk_esp_time_us() - _io_t0; n++; } while (0)
+#else
+#define JK_IO_T0()
+#define JK_IO_ACC(us, n)
+#endif
+static const char* Linux_stdFileGets_impl(stdFile_t hGobFile, char* dst, size_t len);
 static const char* Linux_stdFileGets(stdFile_t hGobFile, char* dst, size_t len)
 {
+    JK_IO_T0();
+    const char* r = Linux_stdFileGets_impl(hGobFile, dst, len);
+    JK_IO_ACC(jk_esp_io_usGets, jk_esp_io_nGets);
+    return r;
+}
+static const char* Linux_stdFileGets_impl(stdFile_t hGobFile, char* dst, size_t len)
+{
     // Drops static.jkl pPuppetClass parsing from 21.87s to 13.578s due to slow locks on getc
-#ifdef TARGET_RETRO_HOMEBREW
+    // (not on ESP32: its libc's fseek drops the stdio buffer, so the seek-back
+    // per line would re-read the buffer for every line; fgets is fine there)
+#if defined(TARGET_RETRO_HOMEBREW) && !defined(TARGET_ESP32)
     char tmp[128];
     const char* retval = dst;
     if (!dst || !len) return 0;
@@ -232,8 +284,9 @@ static const char16_t* Linux_stdFileGetws(stdFile_t hGobFile, char16_t* dst, siz
 
 static int Linux_stdFseek(stdFile_t hGobFile, int a, int b)
 {
-    //printf("fseek? %x %x\n", a, b);
+    JK_IO_T0();
     int ret = fseek((FILE*)hGobFile, a, b);
+    JK_IO_ACC(jk_esp_io_usSeek, jk_esp_io_nSeek);
     //printf("fseek %x\n", ret);
     return ret;
 }
@@ -270,12 +323,15 @@ void stdPlatform_PrintHeapStats()
 }
 
 // Engine heap in PSRAM (falls back to internal RAM); zeroed like Linux_alloc.
+uint64_t jk_esp_alloc_us = 0, jk_esp_alloc_bytes = 0; uint32_t jk_esp_alloc_n = 0;
 static void* ESP32_alloc(uint32_t len)
 {
+    uint64_t t0 = jk_esp_time_us();
     void* ret = jk_esp_malloc(len);
     if (ret) {
         memset(ret, 0, len);
     }
+    jk_esp_alloc_us += jk_esp_time_us() - t0; jk_esp_alloc_n++; jk_esp_alloc_bytes += len;
     return ret;
 }
 static void ESP32_free(void* ptr)
@@ -1116,6 +1172,17 @@ void stdPlatform_InitServices(HostServices *handlers)
     handlers->suggestHeap = TWL_suggestHeap;
 #endif
 #ifdef TARGET_ESP32
+    handlers->fileOpen = jk_esp_file_open;
+    handlers->fileClose = jk_esp_file_close;
+    handlers->fileRead = jk_esp_file_read;
+    handlers->fileGets = jk_esp_file_gets;
+    handlers->fileWrite = jk_esp_file_write;
+    handlers->fileGetws = jk_esp_file_getws;
+    handlers->fseek = jk_esp_file_seek;
+    handlers->ftell = jk_esp_file_tell;
+    handlers->fileEof = jk_esp_file_eof;
+    handlers->fileSize = jk_esp_file_size;
+    handlers->filePrintf = jk_esp_file_printf;
     handlers->alloc = ESP32_alloc;
     handlers->free = ESP32_free;
     handlers->realloc = ESP32_realloc;

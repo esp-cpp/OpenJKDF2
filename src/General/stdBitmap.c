@@ -65,7 +65,9 @@ int stdBitmap_EnsureData(stdBitmap *pBitmap) {
     }
     stdString_SafeStrCopy(tmp, pBitmap->fpath_full, 128);
     stdBitmap_FreeEntry(pBitmap);
+#ifndef TARGET_ESP32
     stdPlatform_Printf("stdBitmap: Ensuring data for: `%s`\n", tmp);
+#endif
     return stdBitmap_LoadEntry(tmp, pBitmap, 1, 0, 0); // TODO
 #endif
 }

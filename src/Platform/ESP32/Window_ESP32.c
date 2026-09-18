@@ -20,6 +20,8 @@
 #include "Platform/wuRegistry.h"
 #include "Main/jkQuakeConsole.h"
 #include "Gui/jkGUIRend.h"
+#include "Win95/Video.h"
+#include "World/sithWorld.h"
 
 #include "jk_esp.h"
 
@@ -118,12 +120,30 @@ int jk_esp_engine_startup(const char* game_dir)
     Window_msg_main_handler(g_hWnd, WM_SHOWWINDOW, 0, 0);
     Window_msg_main_handler(g_hWnd, WM_PAINT, 0, 0);
     Window_bStarted = 1;
+    jk_esp_log("engine started");
     return 1;
 }
 
 int jk_esp_engine_frame(void)
 {
     if (!Window_bStarted) return 0;
+    static uint32_t frames = 0;
+    static uint32_t lastReport = 0;
+    frames++;
+#if defined(JK_ESP_FS_DEBUG)
+    {
+        extern void jk_prof_start(void); extern void jk_prof_dump(int);
+        static int profState = 0;
+        if (profState == 0) { jk_prof_start(); profState = 1; }
+        else if (profState == 1 && sithWorld_g_pLastLoadedWorld) { jk_prof_dump(48); profState = 2; }
+    }
+#endif
+    uint32_t now = jk_esp_time_ms();
+    if (now - lastReport >= 5000) {
+        jk_esp_log("frame %lu: isDDraw=%d menu=%p world=%p", (unsigned long)frames, jkGame_isDDraw,
+                   (void*)Video_menuBuffer.surface_lock_alloc, (void*)sithWorld_g_pLastLoadedWorld);
+        lastReport = now;
+    }
     Window_Main_Loop();
     if (g_should_exit || jk_esp_quit_requested) {
         return 0;
@@ -225,6 +245,14 @@ void Window_SdlUpdate()
         }
     }
     Window_lastInput = in;
+
+    // Present the 2D menu buffer (in-game frames are presented from
+    // jkGame_Update via std3D_DrawMenu)
+    if (!jkGame_isDDraw && !jkGuiBuildMulti_bRendering) {
+        std3D_StartScene();
+        std3D_DrawMenu();
+        std3D_EndScene();
+    }
 
     if (Window_resized)
     {

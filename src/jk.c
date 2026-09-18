@@ -616,11 +616,21 @@ void jk_init()
 #include <ctype.h>
 #include "wprintf.h"
 
+#if defined(TARGET_ESP32) && defined(JK_ESP_FS_DEBUG)
+#include "jk_esp.h"
+uint64_t jk_esp_io_usScanf = 0; uint32_t jk_esp_io_nScanf = 0;
+#endif
 int _sscanf(const char * s, const char * format, ...)
 {
     va_list aArgs;
     va_start (aArgs, format);
+#if defined(TARGET_ESP32) && defined(JK_ESP_FS_DEBUG)
+    uint64_t t0 = jk_esp_time_us();
+#endif
     int ret = vsscanf (s, format, aArgs);
+#if defined(TARGET_ESP32) && defined(JK_ESP_FS_DEBUG)
+    jk_esp_io_usScanf += jk_esp_time_us() - t0; jk_esp_io_nScanf++;
+#endif
     va_end (aArgs);
     return ret;
 }

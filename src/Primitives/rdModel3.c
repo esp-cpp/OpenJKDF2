@@ -73,7 +73,52 @@ rdModel3* rdModel3_Load(char *pName)
 #define rdModel3_HelpDebug(s, ...) (s)
 
 // MOTS altered (RGB aLights?)
+#if defined(TARGET_ESP32) && defined(JK_ESP_FS_DEBUG)
+#include "jk_esp.h"
+static uint64_t rdModel3_usTotal = 0, rdModel3_usOpen = 0, rdModel3_usMat = 0;
+static uint32_t rdModel3_nLoads = 0;
+static int rdModel3_LoadEntry_impl(char *pFilename, rdModel3 *pModel3);
 int rdModel3_LoadEntry(char *pFilename, rdModel3 *pModel3)
+{
+    uint64_t t0 = jk_esp_time_us();
+    int r = rdModel3_LoadEntry_impl(pFilename, pModel3);
+    uint64_t dt = jk_esp_time_us() - t0;
+    rdModel3_usTotal += dt;
+    ++rdModel3_nLoads;
+    extern uint64_t jk_esp_io_usGets, jk_esp_io_usSeek, jk_esp_io_usRead;
+    extern uint32_t jk_esp_io_nGets, jk_esp_io_nSeek, jk_esp_io_nRead;
+    extern uint64_t jk_esp_io_usScanf, jk_esp_io_usLine; extern uint32_t jk_esp_io_nScanf, jk_esp_io_nLine;
+    jk_esp_log("io: gets %lu/%lu ms, seek %lu/%lu ms, read %lu/%lu ms, readline %lu/%lu ms, sscanf %lu/%lu ms", (unsigned long)jk_esp_io_nGets, (unsigned long)(jk_esp_io_usGets/1000),
+               (unsigned long)jk_esp_io_nSeek, (unsigned long)(jk_esp_io_usSeek/1000), (unsigned long)jk_esp_io_nRead, (unsigned long)(jk_esp_io_usRead/1000),
+               (unsigned long)jk_esp_io_nLine, (unsigned long)(jk_esp_io_usLine/1000), (unsigned long)jk_esp_io_nScanf, (unsigned long)(jk_esp_io_usScanf/1000));
+    extern uint64_t jk_esp_file_usLoad, jk_esp_file_usDirect, jk_esp_file_usOpen, jk_esp_alloc_us, jk_esp_alloc_bytes;
+    extern uint32_t jk_esp_file_nLoad, jk_esp_file_nDirect, jk_esp_file_nOpen, jk_esp_file_nOpenFail, jk_esp_alloc_n;
+    extern uint32_t jk_esp_fs_dir_hits, jk_esp_fs_dir_misses, jk_esp_fs_dir_overflow;
+    jk_esp_log("dircache: hits %lu misses %lu overflow %lu", (unsigned long)jk_esp_fs_dir_hits, (unsigned long)jk_esp_fs_dir_misses, (unsigned long)jk_esp_fs_dir_overflow);
+    jk_esp_log("sd: winload %lu/%lu ms, direct %lu/%lu ms, open %lu(%lu fail)/%lu ms; alloc %lu/%lu ms %lu KB",
+               (unsigned long)jk_esp_file_nLoad, (unsigned long)(jk_esp_file_usLoad/1000), (unsigned long)jk_esp_file_nDirect, (unsigned long)(jk_esp_file_usDirect/1000),
+               (unsigned long)jk_esp_file_nOpen, (unsigned long)jk_esp_file_nOpenFail, (unsigned long)(jk_esp_file_usOpen/1000),
+               (unsigned long)jk_esp_alloc_n, (unsigned long)(jk_esp_alloc_us/1000), (unsigned long)(jk_esp_alloc_bytes/1024));
+    extern uint64_t jk_esp_us_input, jk_esp_us_wait, jk_esp_us_free, jk_esp_us_realloc, jk_esp_us_log;
+    extern uint32_t jk_esp_n_input, jk_esp_n_wait, jk_esp_n_free, jk_esp_n_realloc, jk_esp_n_log;
+    jk_esp_log("glue: input %lu/%lu ms, wait %lu/%lu ms, free %lu/%lu ms, realloc %lu/%lu ms, log %lu/%lu ms",
+               (unsigned long)jk_esp_n_input, (unsigned long)(jk_esp_us_input/1000), (unsigned long)jk_esp_n_wait, (unsigned long)(jk_esp_us_wait/1000),
+               (unsigned long)jk_esp_n_free, (unsigned long)(jk_esp_us_free/1000), (unsigned long)jk_esp_n_realloc, (unsigned long)(jk_esp_us_realloc/1000),
+               (unsigned long)jk_esp_n_log, (unsigned long)(jk_esp_us_log/1000));
+    jk_esp_log("models: #%lu %s %lu ms (total %lu ms, open %lu ms, materials %lu ms) verts %d",
+               (unsigned long)rdModel3_nLoads, pFilename, (unsigned long)(dt / 1000), (unsigned long)(rdModel3_usTotal / 1000),
+               (unsigned long)(rdModel3_usOpen / 1000), (unsigned long)(rdModel3_usMat / 1000),
+               pModel3->numGeos > 0 && pModel3->aGeos[0].numMeshes > 0 ? pModel3->aGeos[0].aMeshes[0].numVertices : -1);
+    return r;
+}
+#define RDMODEL3_T0() uint64_t _t0 = jk_esp_time_us()
+#define RDMODEL3_ACC(acc) acc += jk_esp_time_us() - _t0
+static int rdModel3_LoadEntry_impl(char *pFilename, rdModel3 *pModel3)
+#else
+#define RDMODEL3_T0()
+#define RDMODEL3_ACC(acc)
+int rdModel3_LoadEntry(char *pFilename, rdModel3 *pModel3)
+#endif
 {
     rdMesh *mesh; // ebx
     int vertex_num; // edi
@@ -164,7 +209,7 @@ int rdModel3_LoadEntry(char *pFilename, rdModel3 *pModel3)
         if ( _sscanf(stdConffile_g_aLine, " %d: %s", &geoset_num, std_g_genBuffer) != 2 )
             goto fail;
 
-        pModel3->aMaterials[i] = rdMaterial_Load(std_g_genBuffer, 0, 0);
+        { RDMODEL3_T0(); pModel3->aMaterials[i] = rdMaterial_Load(std_g_genBuffer, 0, 0); RDMODEL3_ACC(rdModel3_usMat); }
 
         if ( !pModel3->aMaterials[i] ) {
             rdModel3_HelpDebug("OpenJKDF2: %s: Failed to load material %s\n", __func__, std_g_genBuffer); // Added

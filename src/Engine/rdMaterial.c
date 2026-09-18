@@ -340,7 +340,9 @@ LABEL_21:
 #else
         if ((format.width <= 16 || mipmap_num >= texture->num_mipmaps-1)) { // Dreamcast has Big Boy amounts of VRAM
 #endif
+#ifndef TARGET_ESP32
             printf("Load %s tex %d/%d mip %d/%d\n", mat_fpath, tex_numa, material->num_textures, mipmap_num, texture->num_mipmaps);
+#endif
             created_tex = stdDisplay_VBufferNew(&format, create_ddraw_surface, gpu_mem, 0);
             *texture_struct = created_tex;
 #if defined(RDMATERIAL_LRU_LOAD_UNLOAD)

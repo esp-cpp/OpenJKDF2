@@ -1323,6 +1323,9 @@ void InstallHelper_SetCwd()
         snprintf(tmp, sizeof(tmp)-1, "%smots/", openjkdf2_aOrigCwd);
     }
     chdir(tmp);
+#elif defined(TARGET_ESP32)
+    // The game directory is chosen by the launcher (tab5-emu) and is already
+    // the working directory; nothing to do.
 #else
     if (!Main_bMotsCompat) {
         chdir("/jk1/");

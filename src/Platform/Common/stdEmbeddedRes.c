@@ -1,3 +1,6 @@
+#ifdef TARGET_ESP32
+#include "jk_esp_fs.h"
+#endif
 #include "stdEmbeddedRes.h"
 
 #include "globals.h"
@@ -53,7 +56,17 @@ for (int i = 0; i < strlen(tmp_filepath); i++)
 }
 #endif
 
-#ifdef TARGET_RETRO_HOMEBREW
+#if defined(TARGET_ESP32)
+    // This runs for every GOB entry open; a real stat on the card costs a
+    // FatFs directory scan each time. Consult the directory cache first.
+    {
+        const char* absPath = jk_esp_fs_path(tmp_filepath);
+        exists = jk_esp_fs_dir_might_exist(absPath) && (stat(absPath, &statstuff) >= 0);
+    }
+    if (!exists) {
+        goto skip_fopen;
+    }
+#elif defined(TARGET_RETRO_HOMEBREW)
     exists = stat(tmp_filepath, &statstuff) >= 0;
     if (!exists) {
         goto skip_fopen;
