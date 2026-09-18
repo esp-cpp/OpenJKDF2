@@ -87,7 +87,7 @@ tVBuffer* Video_swEnsureWorldBuffer(void)
 // Nearest-neighbor scaled blit of pSrc's [0,srcW)x[0,srcH) region into pDst's
 // [dstX,dstX+dstW)x[dstY,dstY+dstH) region, skipping source index 0 (transparent). Both buffers must
 // be locked (surface_lock_alloc valid); strides come from format.rowSize.
-static void Video_swBlitScaledKeyed(tVBuffer* pDst, tVBuffer* pSrc,
+static __attribute__((unused)) void Video_swBlitScaledKeyed(tVBuffer* pDst, tVBuffer* pSrc,
                                     int srcW, int srcH, int dstX, int dstY, int dstW, int dstH)
 {
     if (dstW <= 0 || dstH <= 0 || srcW <= 0 || srcH <= 0) return;
@@ -137,12 +137,16 @@ void Video_swCompositeOverlaysIntoWorld(void)
     // HUD: the menu buffer's top-left 640x480 texels, scaled into the 4:3-centered region of the
     // world buffer (matches std3D_DrawMenu's in-game present, which samples that same 640x480 sub-rect
     // and letterboxes it 4:3). The world buffer shares the window aspect, so this stays centered.
+    // ESP32: the world buffer is lower resolution than the HUD, so the HUD is presented as a separate
+    // full-resolution overlay by std3D_DrawMenu instead of being downsampled here.
+#ifndef TARGET_ESP32
     {
         int dstH = worldH;
         int dstW = (worldH * 640) / 480;
         int dstX = (worldW - dstW) / 2;
         Video_swBlitScaledKeyed(pWorld, Video_pMenuBuffer, 640, 480, dstX, 0, dstW, dstH);
     }
+#endif
     stdDisplay_VBufferUnlock(Video_pMenuBuffer);
 
 #ifdef SDL2_RENDER

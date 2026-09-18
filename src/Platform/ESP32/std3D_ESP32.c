@@ -142,12 +142,23 @@ void std3D_DrawMenu()
 
     tVBuffer* pSrc = NULL;
     int w = 0, h = 0;
+    // the HUD (drawn into the 640x480 logical area of the menu buffer) is
+    // handed to the platform as a separate full-resolution overlay instead of
+    // being downsampled into the low-resolution world buffer
+    const uint8_t* pOverlay = NULL;
+    int ow = 0, oh = 0, opitch = 0;
 #ifdef RDRASTER_SOFTWARE_RENDERER
     if (Video_swWorldPresentPending && Video_pSwWorldBuffer && Video_pSwWorldBuffer->surface_lock_alloc) {
         Video_swWorldPresentPending = 0;
         pSrc = Video_pSwWorldBuffer;
         w = pSrc->format.width;
         h = pSrc->format.height;
+        if (Video_menuBuffer.surface_lock_alloc) {
+            pOverlay = (const uint8_t*)Video_menuBuffer.surface_lock_alloc;
+            ow = Video_menuBuffer.format.width < 640 ? Video_menuBuffer.format.width : 640;
+            oh = Video_menuBuffer.format.height < 480 ? Video_menuBuffer.format.height : 480;
+            opitch = Video_menuBuffer.format.rowSize;
+        }
     }
 #endif
     if (!pSrc) {
@@ -171,8 +182,8 @@ void std3D_DrawMenu()
         }
     }
 #endif
-    jk_esp_present_8bpp((const uint8_t*)pSrc->surface_lock_alloc, w, h, pSrc->format.rowSize,
-                        (const uint8_t*)stdDisplay_masterPalette);
+    jk_esp_present_8bpp_overlay((const uint8_t*)pSrc->surface_lock_alloc, w, h, pSrc->format.rowSize,
+                                pOverlay, ow, oh, opitch, (const uint8_t*)stdDisplay_masterPalette);
 }
 
 void std3D_DrawSceneFbo() {}
