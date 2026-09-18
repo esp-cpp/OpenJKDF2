@@ -29,6 +29,9 @@ extern uint32_t Video_overlayTexId;
 // presented full-screen while the HUD/menu stays the 640x480-logical overlay composited on top
 // (std3D_DrawMenu samples only a 640x480 sub-rect of the menu buffer). NULL until first ensured.
 extern tVBuffer* Video_pSwWorldBuffer;
+#ifdef TARGET_ESP32
+extern rdCanvas* Video_pSwWorldCanvas; // Added: camera canvas at the world buffer's size
+#endif
 // Set by the jkGame_Update software bracket on frames that actually render the world; consumed by
 // std3D's full-screen present so stale world frames aren't shown during menus/cutscenes.
 extern int Video_swWorldPresentPending;

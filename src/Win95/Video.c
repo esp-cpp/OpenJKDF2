@@ -36,6 +36,11 @@ tVBuffer Video_overlayMapBuffer;
 #ifdef RDRASTER_SOFTWARE_RENDERER
 tVBuffer* Video_pSwWorldBuffer = NULL;
 int Video_swWorldPresentPending = 0;
+#ifdef TARGET_ESP32
+#include "jk_esp.h"
+#include "Engine/rdCanvas.h"
+rdCanvas* Video_pSwWorldCanvas = NULL;
+#endif
 
 tVBuffer* Video_swEnsureWorldBuffer(void)
 {
@@ -45,15 +50,22 @@ tVBuffer* Video_swEnsureWorldBuffer(void)
 
     int w = Video_pMenuBuffer->format.width;
     int h = Video_pMenuBuffer->format.height;
-
+#ifdef TARGET_ESP32
+    // Added: the world renders at the platform's internal resolution (e.g. 426x240,
+    // scaled to the panel by the PPA); the 2D layer stays at the menu buffer size.
+    w = jk_esp_internal_width();
+    h = jk_esp_internal_height();
+#endif
     // Drop the old buffer when the window (and thus the menu buffer) resized.
     if (Video_pSwWorldBuffer != NULL
         && (Video_pSwWorldBuffer->format.width != w || Video_pSwWorldBuffer->format.height != h))
     {
+#ifdef TARGET_ESP32
+        if (Video_pSwWorldCanvas) { rdCanvas_Free(Video_pSwWorldCanvas); Video_pSwWorldCanvas = NULL; }
+#endif
         stdDisplay_VBufferFree(Video_pSwWorldBuffer);
         Video_pSwWorldBuffer = NULL;
     }
-
     if (Video_pSwWorldBuffer == NULL)
     {
         tRasterInfo fmt = Video_pMenuBuffer->format; // 8bpp, matching stride/palette layout
@@ -62,7 +74,13 @@ tVBuffer* Video_swEnsureWorldBuffer(void)
         fmt.height = h;
         Video_pSwWorldBuffer = stdDisplay_VBufferNew(&fmt, 0, 0, NULL);
     }
-
+#ifdef TARGET_ESP32
+    if (Video_pSwWorldBuffer && !Video_pSwWorldCanvas)
+    {
+        // Added: a canvas of the world buffer's size for the camera to render through
+        Video_pSwWorldCanvas = rdCanvas_New(2, Video_pSwWorldBuffer, Video_pVbufIdk, 0, 0, w, h, 6);
+    }
+#endif
     return Video_pSwWorldBuffer;
 }
 

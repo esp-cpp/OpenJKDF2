@@ -207,6 +207,10 @@ int jkGame_Update()
     tVBuffer* rdsw_pWorldBuf = NULL;
     tVBuffer* rdsw_pSavedVBuf = NULL;
     tVBuffer* rdsw_pRenderBuf = NULL;
+#ifdef TARGET_ESP32
+    rdCanvas* rdsw_savedCanvas = NULL;
+    flex_t rdsw_savedAspect = 1.0;
+#endif
     // On a hardware->software transition, free the material GL textures the hardware path uploaded:
     // the software rasterizer samples texels from the system-RAM SDL surfaces and never touches VRAM,
     // so those textures are dead weight while SW is active. They re-upload lazily (texture_loaded is
@@ -226,6 +230,19 @@ int jkGame_Update()
         if (rdsw_pWorldBuf && Video_pCanvas)
         {
             rdsw_pSavedVBuf = Video_pCanvas->pVBuffer;
+#ifdef TARGET_ESP32
+            // Added: the world buffer has its own (smaller, widescreen) canvas; point the
+            // current camera at it for the world + POV draw and restore it afterwards.
+            if (Video_pSwWorldCanvas && sithCamera_g_pCurCamera)
+            {
+                rdsw_savedAspect = sithCamera_g_pCurCamera->rdCamera.aspectRatio;
+                rdsw_savedCanvas = sithCamera_g_pCurCamera->rdCamera.pCanvas;
+                rdCamera_SetAspectRatio(&sithCamera_g_pCurCamera->rdCamera,
+                                        (flex_t)rdsw_pWorldBuf->format.height / (flex_t)rdsw_pWorldBuf->format.width);
+                rdCamera_SetCanvas(&sithCamera_g_pCurCamera->rdCamera, Video_pSwWorldCanvas);
+            }
+            else
+#endif
             Video_pCanvas->pVBuffer = rdsw_pWorldBuf;
             // Clear to fill color (index 0) so untouched pixels present transparent (menu shader
             // discards index 0), matching the per-frame Video_pMenuBuffer fill for the world.
@@ -278,6 +295,14 @@ int jkGame_Update()
         if (rdsw_pWorldBuf && Video_pCanvas)
         {
             stdDisplay_VBufferUnlock(rdsw_pWorldBuf);
+#ifdef TARGET_ESP32
+            if (rdsw_savedCanvas && sithCamera_g_pCurCamera)
+            {
+                rdCamera_SetAspectRatio(&sithCamera_g_pCurCamera->rdCamera, rdsw_savedAspect);
+                rdCamera_SetCanvas(&sithCamera_g_pCurCamera->rdCamera, rdsw_savedCanvas);
+            }
+            else
+#endif
             Video_pCanvas->pVBuffer = rdsw_pSavedVBuf;   // restore the menu-buffer canvas for the HUD
             Video_swWorldPresentPending = 1;             // world rendered this frame → present it
         }
