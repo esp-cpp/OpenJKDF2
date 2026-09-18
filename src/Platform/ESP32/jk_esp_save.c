@@ -81,12 +81,19 @@ int jk_esp_engine_load(const char* path)
     return jkMain_sub_4034D0(header.episodeName, (char*)path, header.jklName, label);
 }
 
-// Restart the current level (the engine's "restart level" action).
+// Restart the current level. Like the engine's ESC menu "restart": restore
+// the level-start autosave (written on every level open) in place on the
+// next tick; if there is none, fall back to reloading the level from disk.
 int jk_esp_engine_reset(void)
 {
     if (!sithWorld_g_pCurrentWorld) {
         jk_esp_log("reset: no level running");
         return 0;
     }
+    if (jkPlayer_LoadAutosave()) {
+        jk_esp_log("reset: restoring the level-start autosave");
+        return 1;
+    }
+    jk_esp_log("reset: no autosave, reloading the level");
     return jkMain_MissionReload();
 }
