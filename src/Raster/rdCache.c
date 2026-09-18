@@ -142,8 +142,34 @@ void rdCache_Flush()
         // Perspective-correct, z-buffered per-face path (rdZRaster): draw each cached face
         // independently with true per-pixel perspective + a shared depth buffer. The depth
         // buffer is cleared once per frame in jkGame_Update (rdZRaster_BeginFrame).
+#if defined(TARGET_ESP32) && defined(JK_ESP_FS_DEBUG)
+        {
+            extern void jk_esp_log(const char* fmt, ...);
+            static uint32_t nFlush = 0, nFaces = 0;
+            nFaces += rdCache_numProcFaces;
+            if ((++nFlush % 200) == 0) {
+                extern uint32_t rdZRaster_dbg[64];
+                char tmp[256]; int o = 0;
+                for (int i = 0; i < 24; i++) o += snprintf(tmp + o, sizeof(tmp) - o, "%lu ", (unsigned long)rdZRaster_dbg[i]);
+                jk_esp_log("rdCache sw flush #%lu: %lu faces so far; DrawFace exits: %s", (unsigned long)nFlush, (unsigned long)nFaces, tmp);
+            }
+        }
+#endif
         for (int rdsw_i = 0; rdsw_i < rdCache_numProcFaces; rdsw_i++)
+        {
+#if defined(RDMATERIAL_LRU_LOAD_UNLOAD)
+            // Added (ESP32): materials are loaded lazily on the retro targets; the
+            // hardware path does this in rdCache_SendFaceListToHardware, the
+            // software path needs it too or every face has no texinfo.
+            rdMaterial* pSwMat = rdCache_aProcFaces[rdsw_i].material;
+            if (pSwMat) {
+                rdMaterial_EnsureData(pSwMat);
+                if (!pSwMat->bDataLoaded)
+                    rdMaterial_EnsureMetadata(pSwMat);
+            }
+#endif
             rdZRaster_DrawFace(&rdCache_aProcFaces[rdsw_i]);
+        }
 #else
         // Affine active-edge painter's path (rdActive/rdAFRaster): wireframe (LW, geometryMode 2)
         // and the affine textured trio (geometryMode 4 / textureMode 0): FAT (flat), LAT (lit),

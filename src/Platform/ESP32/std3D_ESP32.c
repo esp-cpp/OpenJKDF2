@@ -14,6 +14,8 @@
 #include "Main/Main.h"
 #include "World/jkPlayer.h"
 #include "Raster/rdZRaster.h"
+#include "Engine/rdroid.h"
+#include "Engine/rdMaterial.h"
 #include "stdPlatform.h"
 #include "jk.h"
 
@@ -42,6 +44,8 @@ void std3D_Shutdown()
 
 int std3D_StartScene()
 {
+    // the material LRU / deferred loader budgets per frame on this counter
+    std3D_frameCount++;
     return 1;
 }
 
@@ -153,6 +157,20 @@ void std3D_DrawMenu()
         h = pSrc->format.height < 480 ? pSrc->format.height : 480;
     }
     if (w <= 0 || h <= 0) return;
+#if defined(JK_ESP_FS_DEBUG)
+    {
+        static uint32_t n = 0;
+        if ((n++ % 100) == 0) {
+            const uint8_t* px = (const uint8_t*)pSrc->surface_lock_alloc;
+            uint32_t nonzero = 0;
+            for (int i = 0; i < w * h; i += 97) nonzero += px[i] != 0;
+            extern int rdroid_curAcceleration;
+            jk_esp_log("draw: sw=%d accel=%d isDDraw=%d worldbuf=%p src=%s %dx%d nonzero~%lu/%d",
+                       rdroid_bSoftwareRenderer, rdroid_curAcceleration, jkGame_isDDraw, (void*)Video_pSwWorldBuffer,
+                       pSrc == Video_pSwWorldBuffer ? "world" : "menu", w, h, (unsigned long)nonzero, (w * h) / 97);
+        }
+    }
+#endif
     jk_esp_present_8bpp((const uint8_t*)pSrc->surface_lock_alloc, w, h, pSrc->format.rowSize,
                         (const uint8_t*)stdDisplay_masterPalette);
 }

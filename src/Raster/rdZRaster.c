@@ -431,14 +431,16 @@ static void rdZRaster_DrawWireframeFace(rdProcEntry* pProcEntry, rdTexinfo* pTex
                        color, -1);
 }
 
+uint32_t rdZRaster_dbg[64];
 void rdZRaster_DrawFace(rdProcEntry* pProcEntry)
 {
+    rdZRaster_dbg[0]++;
     if (rdZRaster_pZBuffer == NULL)
-        return;
+        { rdZRaster_dbg[1]++; return; }
 
     tVBuffer* pVBuffer = rdCamera_g_pCurCamera->pCanvas->pVBuffer;
     if (pVBuffer->surface_lock_alloc == NULL || pVBuffer->format.format.is16bit)
-        return;
+        { rdZRaster_dbg[2]++; return; }
 
     int geometryMode = pProcEntry->geometryMode;
     if (geometryMode > rdroid_g_curGeometryMode)
@@ -449,14 +451,14 @@ void rdZRaster_DrawFace(rdProcEntry* pProcEntry)
 
     // Faces flagged for the custom per-face hook (extraData&1) are drawn by rdCache_DrawFaceUser
     if ((pProcEntry->extraData & 1) != 0 || geometryMode == RD_GEOMETRY_NONE)
-        return;
+        { rdZRaster_dbg[3]++; return; }
     if (lightingMode < 0 || lightingMode >= 5)
-        return;
+        { rdZRaster_dbg[4]++; return; }
 
     // Resolve the material cel -> texinfo -> a resident mip surface.
     rdMaterial* pMaterial = pProcEntry->material;
     if (pMaterial == NULL)
-        return;
+        { rdZRaster_dbg[5]++; return; }
     int cel = pProcEntry->wallCel;
     if (cel == -1)
         cel = pMaterial->curCelNum;
@@ -466,15 +468,15 @@ void rdZRaster_DrawFace(rdProcEntry* pProcEntry)
         cel = pMaterial->num_texinfo - 1;
     rdTexinfo* pTexinfo = pMaterial->texinfos[cel];
     if (pTexinfo == NULL)
-        return;
+        { rdZRaster_dbg[6]++; return; }
 
     if (geometryMode == RD_GEOMETRY_WIREFRAME)
     {
         rdZRaster_DrawWireframeFace(pProcEntry, pTexinfo);
-        return;
+        { rdZRaster_dbg[7]++; return; }
     }
     if (geometryMode != RD_GEOMETRY_FULL && geometryMode != RD_GEOMETRY_SOLID)
-        return;
+        { rdZRaster_dbg[8]++; return; }
 
     // Decide solid vs textured. A non-"full" texture (texture_type & 8 clear) or a texinfo with no
     // texture renders as a flat solid color (the texinfo's solidColor); a full texture is sampled.
@@ -522,7 +524,7 @@ void rdZRaster_DrawFace(rdProcEntry* pProcEntry)
             mip--;
         pMip = pTexture->texture_struct[mip];
         if (pMip == NULL)
-            return;
+            { rdZRaster_dbg[9]++; return; }
 
         // Lock the mip on desktop to expose its 8bpp texels (persistent on TWL/DC).
         pTexels = (const uint8_t*)pMip->surface_lock_alloc;
@@ -533,7 +535,7 @@ void rdZRaster_DrawFace(rdProcEntry* pProcEntry)
             lockedMip = 1;
         }
         if (pTexels == NULL)
-            return;
+            { rdZRaster_dbg[10]++; return; }
         mipW = (int)pMip->format.width;
         mipH = (int)pMip->format.height;
         mipStride = (int)pMip->format.rowSize;
@@ -594,7 +596,7 @@ void rdZRaster_DrawFace(rdProcEntry* pProcEntry)
     if (numVerts < 3 || numVerts > 32)
     {
         if (lockedMip) stdDisplay_VBufferUnlock(pMip);
-        return;
+        { rdZRaster_dbg[11]++; return; }
     }
     rdZVertex verts[32];
     rdVector3* pV = pProcEntry->aVertices;
@@ -631,6 +633,7 @@ void rdZRaster_DrawFace(rdProcEntry* pProcEntry)
     st.mipH = mipH;
     st.mipStride = mipStride;
     st.solidColor = solidColor;
+    rdZRaster_dbg[12]++;
     rdZRaster_DispatchNGon(verts, numVerts, &st,
                            solidColor >= 0,          // solid (untextured) fill
                            affine,                    // AT (affine) vs IT (perspective)
