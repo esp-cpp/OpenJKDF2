@@ -337,6 +337,8 @@ LABEL_21:
         // Limit textures that are loaded on TWL
 #ifdef TARGET_TWL
         if ((format.width <= 16 || mipmap_num >= texture->num_mipmaps-1)) {
+#elif defined(TARGET_ESP32)
+        if ((format.width <= 64 || mipmap_num >= texture->num_mipmaps-1)) { // 32 MB PSRAM: keep the mid mips too
 #else
         if ((format.width <= 16 || mipmap_num >= texture->num_mipmaps-1)) { // Dreamcast has Big Boy amounts of VRAM
 #endif

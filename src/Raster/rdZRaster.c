@@ -522,6 +522,13 @@ void rdZRaster_DrawFace(rdProcEntry* pProcEntry)
         }
         while (mip > 0 && pTexture->texture_struct[mip] == NULL)
             mip--;
+#ifdef TARGET_RETRO_HOMEBREW
+        // Added: the retro loaders keep only the smaller mip levels resident;
+        // if nothing was found walking down, take the first resident level up.
+        if (pTexture->texture_struct[mip] == NULL)
+            while (mip < (int)pTexture->num_mipmaps - 1 && pTexture->texture_struct[mip] == NULL)
+                mip++;
+#endif
         pMip = pTexture->texture_struct[mip];
         if (pMip == NULL)
             { rdZRaster_dbg[9]++; return; }
