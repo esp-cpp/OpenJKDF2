@@ -146,6 +146,7 @@ int jk_esp_engine_frame(void)
     }
     Window_Main_Loop();
     if (g_should_exit || jk_esp_quit_requested) {
+        jk_esp_log("engine frame: exit (g_should_exit=%d quit_requested=%d)", g_should_exit, jk_esp_quit_requested);
         return 0;
     }
     return 1;
@@ -199,10 +200,20 @@ void Window_SdlUpdate()
         return;
     }
 
+    // Dispatching a message below can redraw the GUI, which flips, which
+    // calls back into here: commit the new input state first and refuse to
+    // nest, so an edge is reported exactly once.
+    static int Window_bInUpdate = 0;
+    if (Window_bInUpdate) {
+        return;
+    }
+    Window_bInUpdate = 1;
     jk_esp_input_t in;
     jk_esp_read_input(&in);
-    const uint16_t pressed = in.buttons & ~Window_lastInput.buttons;
-    const uint16_t released = ~in.buttons & Window_lastInput.buttons;
+    const jk_esp_input_t last = Window_lastInput;
+    Window_lastInput = in;
+    const uint16_t pressed = in.buttons & ~last.buttons;
+    const uint16_t released = ~in.buttons & last.buttons;
 
     // START -> escape (pause menu / back), A -> return, d-pad -> arrows
     struct { uint16_t mask; int vk; int chr; } keymap[] = {
@@ -234,17 +245,16 @@ void Window_SdlUpdate()
             Window_mouseY = my;
             uint32_t pos = (Window_mouseX & 0xFFFF) | ((Window_mouseY << 16) & 0xFFFF0000);
             Window_msg_main_handler(g_hWnd, WM_MOUSEMOVE, 0, pos);
-            if (!Window_lastInput.touch_down) {
+            if (!last.touch_down) {
                 Window_bMouseLeft = 1;
                 Window_msg_main_handler(g_hWnd, WM_LBUTTONDOWN, 1, pos);
             }
-        } else if (Window_lastInput.touch_down) {
+        } else if (last.touch_down) {
             uint32_t pos = (Window_mouseX & 0xFFFF) | ((Window_mouseY << 16) & 0xFFFF0000);
             Window_bMouseLeft = 0;
             Window_msg_main_handler(g_hWnd, WM_LBUTTONUP, 0, pos);
         }
     }
-    Window_lastInput = in;
 
     // Present the 2D menu buffer (in-game frames are presented from
     // jkGame_Update via std3D_DrawMenu)
@@ -274,6 +284,7 @@ void Window_SdlUpdate()
 #ifdef QUAKE_CONSOLE
     last_jkQuakeConsole_bOpen = jkQuakeConsole_bOpen;
 #endif
+    Window_bInUpdate = 0;
 }
 
 void Window_SdlUpdateModal()

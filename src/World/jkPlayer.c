@@ -201,7 +201,12 @@ void jkPlayer_StartupVars()
     sithCvar_RegisterBool("r_hidpi",                     0,                         &Window_isHiDpi_tmp,                CVARFLAG_LOCAL|CVARFLAG_READONLY);
     sithCvar_RegisterBool("r_fullscreen",                0,                         &Window_isFullscreen_tmp,           CVARFLAG_LOCAL|CVARFLAG_READONLY);
 #ifdef RDRASTER_SOFTWARE_RENDERER
+#ifdef TARGET_ESP32
+    // No 3D hardware on this target: the software rasterizer is the renderer.
+    sithCvar_RegisterBool("r_softwareRenderer",          1,                         &rdroid_bSoftwareRenderer,          CVARFLAG_LOCAL);
+#else
     sithCvar_RegisterBool("r_softwareRenderer",          0,                         &rdroid_bSoftwareRenderer,          CVARFLAG_LOCAL);
+#endif
 #endif
 
     // TODO: port to SDL
