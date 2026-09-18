@@ -137,6 +137,13 @@ int sithGamesave_Restore(char *saveFname, int debugNextCheckpoint, int a3)
         fpath, 128, "player%c%s%c%s",
         LEC_PATH_SEPARATOR_CHR, playerName, LEC_PATH_SEPARATOR_CHR, saveFname
     );
+#ifdef TARGET_ESP32
+    // Added: the platform's save slots live outside the profile directory
+    if (saveFname[0] == '/') {
+        _strncpy(fpath, saveFname, 127);
+        fpath[127] = 0;
+    }
+#endif
 
     if (stdConffile_OpenReadBytesBypass(fpath))
     {
@@ -541,6 +548,13 @@ int sithGamesave_Save(char *saveFname, int a2, int a3, char16_t *saveName)
         LEC_PATH_SEPARATOR_CHR, tmp_playerName, LEC_PATH_SEPARATOR_CHR,
         saveFname
     );
+#ifdef TARGET_ESP32
+    // Added: the platform's save slots live outside the profile directory
+    if (saveFname[0] == '/') {
+        _strncpy(PathName, saveFname, 127);
+        PathName[127] = 0;
+    }
+#endif
 #ifdef TARGET_DREAMCAST
     // Redirect the death/restart autosave to a flat /ram file: full, volatile, and
     // off the VMU (see sithGamesave_DcRamAutosavePath). No-op for other saves; the
