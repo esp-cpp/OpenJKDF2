@@ -327,7 +327,7 @@ uint64_t jk_esp_alloc_us = 0, jk_esp_alloc_bytes = 0; uint32_t jk_esp_alloc_n = 
 static void* ESP32_alloc(uint32_t len)
 {
     uint64_t t0 = jk_esp_time_us();
-    void* ret = jk_esp_malloc(len);
+    void* ret = jk_esp_malloc_site(len, __builtin_return_address(0));
     if (ret) {
         memset(ret, 0, len);
     }
@@ -340,7 +340,7 @@ static void ESP32_free(void* ptr)
 }
 static void* ESP32_realloc(void* ptr, uint32_t len)
 {
-    return jk_esp_realloc(ptr, len);
+    return jk_esp_realloc_site(ptr, len, __builtin_return_address(0));
 }
 #endif
 
