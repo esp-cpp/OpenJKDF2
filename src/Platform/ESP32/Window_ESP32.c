@@ -105,6 +105,14 @@ int jk_esp_engine_startup(const char* game_dir)
     Window_xSize = 640;
     Window_ySize = 480;
     Window_resized = 1;
+    // platform state from a previous run in this process
+    Window_bMouseLeft = Window_bMouseRight = 0;
+    Window_mouseX = Window_mouseY = Window_lastMouseX = Window_lastMouseY = 0;
+    Window_lastXRel = Window_lastYRel = 0;
+    Window_menu_mouseX = Window_menu_mouseY = 0;
+    Window_bFlipRequested = 0;
+    last_jkGame_isDDraw = 0;
+    memset(&Window_lastInput, 0, sizeof(Window_lastInput));
 
     int result = Main_Startup(cmdLine);
     if (!result) {

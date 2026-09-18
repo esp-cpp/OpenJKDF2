@@ -363,6 +363,11 @@ void jkGui_Shutdown()
 {
     stdPlatform_Printf("OpenJKDF2: %s\n", __func__);
 
+    // Added: the menu video mode is gone with the display; without this a
+    // restarted engine's jkGui_SetModeMenu returns early and the GUI renderer
+    // never gets its buffers (NULL deref in the first menu paint)
+    jkGui_GdiMode = 0;
+
     char playerShortName[32];
 
     for (int i = 0; i < JKGUI_NUM_FONTS; i++)
