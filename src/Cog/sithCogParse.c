@@ -34,6 +34,7 @@ void sithCogParse_FreeParseTree()
     if ( cogparser_nodes_alloc )
     {
         SITH_FREE(cogparser_nodes_alloc);
+        cogparser_nodes_alloc = NULL; // Added: a later parse (engine restart) would realloc the freed pool
         cogparser_num_nodes = 0;
         cogparser_current_nodeidx = 0;
     }
