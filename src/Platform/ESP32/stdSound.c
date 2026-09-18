@@ -1,9 +1,11 @@
 // Software sound mixer for the ESP32-P4 port (STDSOUND_ESP32).
 //
 // Buffers are plain PCM in RAM (8/16 bit, mono/stereo, any rate). The engine
-// starts/stops them; stdSound_ESP32_Pump() (called once per frame from the
-// platform loop) mixes the playing buffers into 16-bit stereo at
-// STDSOUND_SAMPLE_RATE and hands the result to the HAL audio path.
+// starts/stops them; stdSound_ESP32_Pump() (called every few ms from the
+// glue's audio task) mixes the playing buffers into 16-bit stereo at the
+// HAL's output rate and hands the result to the HAL audio queue, producing
+// as much as the queue accepts. The voice list is shared between the engine
+// thread and the audio task and is protected by jk_esp_audio_lock().
 #include "Win95/stdSound.h"
 #include "Gui/jkGUISound.h"
 #include "Main/Main.h"
@@ -17,11 +19,12 @@
 #include <stdio.h>
 #include <string.h>
 
-#ifndef STDSOUND_SAMPLE_RATE
-#define STDSOUND_SAMPLE_RATE (22050)
-#endif
-// how much audio each pump produces at most (frames of stereo output)
-#define STDSOUND_PUMP_FRAMES (STDSOUND_SAMPLE_RATE / 20)
+// fallback output rate if the HAL reports none
+#define STDSOUND_DEFAULT_RATE (22050)
+// the mixer produces audio in chunks of this many ms, and queues at most
+// STDSOUND_PUMP_CHUNKS of them per pump
+#define STDSOUND_CHUNK_MS (10)
+#define STDSOUND_PUMP_CHUNKS (10)
 
 enum stdEsp32SoundFormat {
     STDSOUND_FMT_8BIT_MONO = 0,
@@ -65,8 +68,28 @@ uint32_t stdSound_ParseWav(stdFile_t sound_file, uint32_t *nSamplesPerSec, int32
 
 static stdSound_buffer_t* stdSound_aPlayingSounds[SITH_MIXER_NUMPLAYINGSOUNDS];
 static int16_t* stdSound_pMixBuf = NULL;
-static uint64_t stdSound_lastPumpUs = 0;
+static uint32_t stdSound_sampleRate = STDSOUND_DEFAULT_RATE;
+static size_t stdSound_chunkFrames = STDSOUND_DEFAULT_RATE / 100;
+// mixed frames not yet accepted by the HAL queue (offset/count into pMixBuf)
+static size_t stdSound_pendingOff = 0;
+static size_t stdSound_pendingLen = 0;
 static int stdSound_bInitted = 0;
+// diagnostics
+static uint32_t stdSound_framesMixed = 0;
+static uint32_t stdSound_maxVoices = 0;
+
+// remove a voice from the playing list; caller holds the audio lock
+static void stdSound_UnlistLocked(stdSound_buffer_t* buf)
+{
+    buf->isPlaying = 0;
+    buf->currentSample = 0;
+    buf->isLooping = 0;
+    for (int i = 0; i < SITH_MIXER_NUMPLAYINGSOUNDS; i++) {
+        if (stdSound_aPlayingSounds[i] == buf) {
+            stdSound_aPlayingSounds[i] = NULL;
+        }
+    }
+}
 
 static int stdSound_FormatFor(int bStereo, int bitsPerSample)
 {
@@ -114,17 +137,19 @@ static inline void stdSound_Fetch(const stdSound_buffer_t* buf, uint32_t idx, in
     }
 }
 
-// Mix up to `frames` frames of output; returns the number of frames produced.
+// Mix `frames` frames of output; caller holds the audio lock.
 static size_t stdSound_Mix(int16_t* out, size_t frames)
 {
     memset(out, 0, frames * 2 * sizeof(int16_t));
+    uint32_t voices = 0;
     for (int i = 0; i < SITH_MIXER_NUMPLAYINGSOUNDS; i++) {
         stdSound_buffer_t* buf = stdSound_aPlayingSounds[i];
         if (!buf || !buf->data || !buf->isPlaying || buf->vol <= 0.0) continue;
         const uint32_t numFrames = buf->bufferBytes / stdSound_BytesPerFrame(buf->format);
         if (numFrames == 0) continue;
+        voices++;
         const uint32_t rate = buf->freq > 0 ? (uint32_t)buf->freq : buf->nSamplesPerSec;
-        const uint32_t step = (uint32_t)(((uint64_t)rate << 16) / STDSOUND_SAMPLE_RATE);
+        const uint32_t step = (uint32_t)(((uint64_t)rate << 16) / stdSound_sampleRate);
         const int32_t volL = (int32_t)(buf->vol * (buf->pan <= 0 ? 1.0f : 1.0f - buf->pan) * 256.0f);
         const int32_t volR = (int32_t)(buf->vol * (buf->pan >= 0 ? 1.0f : 1.0f + buf->pan) * 256.0f);
         uint32_t pos = buf->currentSample;
@@ -136,7 +161,7 @@ static size_t stdSound_Mix(int16_t* out, size_t frames)
                     pos = 0;
                     idx = 0;
                 } else {
-                    stdSound_BufferStop(buf);
+                    stdSound_UnlistLocked(buf);
                     break;
                 }
             }
@@ -149,45 +174,73 @@ static size_t stdSound_Mix(int16_t* out, size_t frames)
             dst += 2;
             pos += step;
         }
-        buf->currentSample = pos;
+        if (buf->isPlaying) buf->currentSample = pos;
     }
+    if (voices > stdSound_maxVoices) stdSound_maxVoices = voices;
+    stdSound_framesMixed += frames;
     return frames;
 }
 
-// Called from the platform frame loop: produce the audio for the elapsed
-// time (bounded) and hand it to the HAL.
+// Called from the glue's audio task: mix chunks and queue them until the HAL
+// queue is full (or STDSOUND_PUMP_CHUNKS were queued). A chunk the queue only
+// partially accepted is kept and finished on the next call.
 void stdSound_ESP32_Pump(void)
 {
     if (!stdSound_bInitted || !stdSound_pMixBuf) return;
-    uint64_t now = jk_esp_time_us();
-    if (stdSound_lastPumpUs == 0) stdSound_lastPumpUs = now;
-    uint64_t elapsed = now - stdSound_lastPumpUs;
-    size_t frames = (size_t)((elapsed * STDSOUND_SAMPLE_RATE) / 1000000ULL);
-    if (frames < 64) return;
-    if (frames > STDSOUND_PUMP_FRAMES) frames = STDSOUND_PUMP_FRAMES;
-    stdSound_lastPumpUs = now;
-    stdSound_Mix(stdSound_pMixBuf, frames);
-    jk_esp_audio_write(stdSound_pMixBuf, frames);
+    for (int n = 0; n < STDSOUND_PUMP_CHUNKS; n++) {
+        if (stdSound_pendingLen == 0) {
+            jk_esp_audio_lock();
+            stdSound_Mix(stdSound_pMixBuf, stdSound_chunkFrames);
+            jk_esp_audio_unlock();
+            stdSound_pendingOff = 0;
+            stdSound_pendingLen = stdSound_chunkFrames;
+        }
+        size_t accepted = jk_esp_audio_write(stdSound_pMixBuf + stdSound_pendingOff * 2, stdSound_pendingLen);
+        stdSound_pendingOff += accepted;
+        stdSound_pendingLen -= accepted;
+        if (stdSound_pendingLen) break; // queue full
+    }
+}
+
+// Periodic diagnostics (called from the engine's frame report)
+void stdSound_ESP32_Report(void)
+{
+    uint32_t voices = 0;
+    for (int i = 0; i < SITH_MIXER_NUMPLAYINGSOUNDS; i++) {
+        if (stdSound_aPlayingSounds[i]) voices++;
+    }
+    jk_esp_log("audio: %lu Hz, mixed %lu frames, %lu voices now, %lu max", (unsigned long)stdSound_sampleRate,
+               (unsigned long)stdSound_framesMixed, (unsigned long)voices, (unsigned long)stdSound_maxVoices);
+    stdSound_framesMixed = 0;
+    stdSound_maxVoices = 0;
 }
 
 int stdSound_Startup()
 {
     jkGuiSound_b3DSound = 0;
+    jk_esp_audio_lock();
     memset(stdSound_aPlayingSounds, 0, sizeof(stdSound_aPlayingSounds));
+    jk_esp_audio_unlock();
     if (stdSound_bInitted) {
         return 1;
     }
-    stdSound_pMixBuf = (int16_t*)malloc(STDSOUND_PUMP_FRAMES * 2 * sizeof(int16_t));
+    uint32_t rate = jk_esp_audio_rate();
+    stdSound_sampleRate = rate ? rate : STDSOUND_DEFAULT_RATE;
+    stdSound_chunkFrames = (stdSound_sampleRate * STDSOUND_CHUNK_MS) / 1000;
+    stdSound_pMixBuf = (int16_t*)malloc(stdSound_chunkFrames * 2 * sizeof(int16_t));
     if (!stdSound_pMixBuf) return 0;
-    jk_esp_audio_set_rate(STDSOUND_SAMPLE_RATE);
-    stdSound_lastPumpUs = 0;
+    stdSound_pendingOff = stdSound_pendingLen = 0;
     stdSound_bInitted = 1;
+    jk_esp_log("stdSound: software mixer at %lu Hz, %u frame chunks", (unsigned long)stdSound_sampleRate,
+               (unsigned)stdSound_chunkFrames);
     return 1;
 }
 
 void stdSound_Shutdown()
 {
+    jk_esp_audio_lock();
     memset(stdSound_aPlayingSounds, 0, sizeof(stdSound_aPlayingSounds));
+    jk_esp_audio_unlock();
 }
 
 void stdSound_SetMenuVolume(flex_t a1)
@@ -218,9 +271,13 @@ void* stdSound_BufferSetData(stdSound_buffer_t* sound, int bufferBytes, int32_t*
     sound->bufferBytes = bufferBytes;
     if (bufferMaxSize)
         *bufferMaxSize = bufferBytes;
+    jk_esp_audio_lock();
+    stdSound_UnlistLocked(sound);
     if (sound->data && !sound->bIsCopy)
         STD_FREE(sound->data);
     sound->bufferBytes = 0;
+    sound->data = NULL;
+    jk_esp_audio_unlock();
     sound->data = STD_ALLOC(bufferBytes);
     if (!sound->data) {
         return NULL;
@@ -238,8 +295,10 @@ int stdSound_BufferUnlock(stdSound_buffer_t* sound, void* buffer, int bufferRead
 int stdSound_BufferPlay(stdSound_buffer_t* buf, int loop)
 {
     if (!buf || !buf->data) return 0;
+    jk_esp_audio_lock();
     buf->isLooping = loop;
-    if (stdSound_IsPlaying(buf, NULL)) {
+    if (buf->isPlaying) {
+        jk_esp_audio_unlock();
         return 1;
     }
     for (int i = 0; i < SITH_MIXER_NUMPLAYINGSOUNDS; i++) {
@@ -247,9 +306,11 @@ int stdSound_BufferPlay(stdSound_buffer_t* buf, int loop)
             buf->currentSample = 0;
             buf->isPlaying = 1;
             stdSound_aPlayingSounds[i] = buf;
+            jk_esp_audio_unlock();
             return 1;
         }
     }
+    jk_esp_audio_unlock();
     return 0;
 }
 
@@ -265,11 +326,21 @@ void stdSound_BufferUnqueueProcessed(stdSound_buffer_t* buf)
 void stdSound_BufferRelease(stdSound_buffer_t* sound)
 {
     if (!sound) return;
-    stdSound_BufferStop(sound);
+    jk_esp_audio_lock();
+    stdSound_UnlistLocked(sound);
     if (sound->data && !sound->bIsCopy) {
+        // duplicates share the sample data: silence any still playing it
+        for (int i = 0; i < SITH_MIXER_NUMPLAYINGSOUNDS; i++) {
+            stdSound_buffer_t* other = stdSound_aPlayingSounds[i];
+            if (other && other->data == sound->data) {
+                stdSound_UnlistLocked(other);
+                other->data = NULL;
+            }
+        }
         STD_FREE(sound->data);
         sound->data = NULL;
     }
+    jk_esp_audio_unlock();
     memset(sound, 0, sizeof(*sound));
     STD_FREE(sound);
 }
@@ -277,9 +348,9 @@ void stdSound_BufferRelease(stdSound_buffer_t* sound)
 int stdSound_BufferReset(stdSound_buffer_t* sound)
 {
     if (!sound) return 0;
-    sound->isPlaying = 0;
-    sound->currentSample = 0;
-    sound->isLooping = 0;
+    jk_esp_audio_lock();
+    stdSound_UnlistLocked(sound);
+    jk_esp_audio_unlock();
     return 1;
 }
 
@@ -325,15 +396,9 @@ void stdSound_IA3D_idk(flex_t a)
 int stdSound_BufferStop(stdSound_buffer_t* buf)
 {
     if (!buf) return 1;
-    buf->isPlaying = 0;
-    buf->currentSample = 0;
-    buf->isLooping = 0;
-    for (int i = 0; i < SITH_MIXER_NUMPLAYINGSOUNDS; i++) {
-        if (stdSound_aPlayingSounds[i] == buf) {
-            stdSound_aPlayingSounds[i] = NULL;
-            return 1;
-        }
-    }
+    jk_esp_audio_lock();
+    stdSound_UnlistLocked(buf);
+    jk_esp_audio_unlock();
     return 1;
 }
 

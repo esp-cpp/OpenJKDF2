@@ -144,6 +144,10 @@ int jk_esp_engine_frame(void)
         jk_esp_log("frame %lu: isDDraw=%d menu=%p world=%p", (unsigned long)frames, jkGame_isDDraw,
                    (void*)Video_menuBuffer.surface_lock_alloc, (void*)sithWorld_g_pLastLoadedWorld);
         jk_esp_present_report();
+        {
+            extern void stdSound_ESP32_Report(void);
+            stdSound_ESP32_Report();
+        }
         lastReport = now;
     }
     Window_Main_Loop();
