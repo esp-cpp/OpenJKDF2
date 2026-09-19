@@ -183,6 +183,10 @@ void jk_esp_engine_shutdown(void)
     }
     Main_Shutdown();
     Window_bStarted = 0;
+    {
+        extern void jk_esp_file_dump_open(void);
+        jk_esp_file_dump_open();
+    }
 }
 
 int Window_Main_Linux(int argc, char** argv)

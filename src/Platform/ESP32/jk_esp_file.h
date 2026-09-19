@@ -14,6 +14,8 @@ extern "C" {
 #endif
 
 stdFile_t jk_esp_file_open(const char* fpath, const char* mode);
+/// Log the files still open (diagnostics, e.g. after engine shutdown)
+void jk_esp_file_dump_open(void);
 int jk_esp_file_close(stdFile_t f);
 size_t jk_esp_file_read(stdFile_t f, void* dst, size_t len);
 size_t jk_esp_file_write(stdFile_t f, void* src, size_t len);

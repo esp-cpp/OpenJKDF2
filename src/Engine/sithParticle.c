@@ -376,7 +376,9 @@ void sithParticle_Free(SithThing *pThing)
 
 void sithParticle_FreeWorldParticles(SithWorld *pWorld)
 {
-    if (!pWorld->numParticles) return;
+    // Added: the table is allocated on the first sithParticle_Load even when no
+    // particle ends up in it; free it regardless of numParticles
+    if (!pWorld->aParticles) return;
 
     for (int i = 0; i < pWorld->numParticles; i++)
     {

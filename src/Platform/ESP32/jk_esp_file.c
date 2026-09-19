@@ -32,6 +32,7 @@ uint32_t jk_esp_file_nLoad = 0, jk_esp_file_nDirect = 0, jk_esp_file_nOpen = 0, 
 typedef struct {
     int fd;
     int writable;
+    char path[96];              // for diagnostics (jk_esp_file_dump_open)
     long size;
     long pos;
     uint8_t* win[JK_WIN_COUNT];
@@ -40,6 +41,38 @@ typedef struct {
     uint32_t winUse[JK_WIN_COUNT];
     uint32_t useCounter;
 } jk_esp_file_t;
+
+// registry of open handles, so files the engine forgets to close can be
+// listed at shutdown
+#define JK_OPEN_MAX 64
+static jk_esp_file_t* jk_esp_file_open_tbl[JK_OPEN_MAX];
+static int jk_esp_file_nOpenNow = 0;
+
+static void jk_esp_file_register(jk_esp_file_t* f)
+{
+    jk_esp_file_nOpenNow++;
+    for (int i = 0; i < JK_OPEN_MAX; i++) {
+        if (!jk_esp_file_open_tbl[i]) { jk_esp_file_open_tbl[i] = f; return; }
+    }
+}
+static void jk_esp_file_unregister(jk_esp_file_t* f)
+{
+    jk_esp_file_nOpenNow--;
+    for (int i = 0; i < JK_OPEN_MAX; i++) {
+        if (jk_esp_file_open_tbl[i] == f) { jk_esp_file_open_tbl[i] = NULL; return; }
+    }
+}
+void jk_esp_file_dump_open(void)
+{
+    jk_esp_log("files: %d still open", jk_esp_file_nOpenNow);
+    for (int i = 0; i < JK_OPEN_MAX; i++) {
+        jk_esp_file_t* f = jk_esp_file_open_tbl[i];
+        if (!f) continue;
+        int nwin = 0;
+        for (int w = 0; w < JK_WIN_COUNT; w++) nwin += f->win[w] != NULL;
+        jk_esp_log("files:   %s (%s, %d windows)", f->path, f->writable ? "write" : "read", nwin);
+    }
+}
 
 static const char* jk_esp_file_resolve(const char* fpath, char* tmp, size_t tmplen)
 {
@@ -79,6 +112,8 @@ stdFile_t jk_esp_file_open(const char* fpath, const char* mode)
     f->size = (fstat(fd, &st) == 0) ? (long)st.st_size : 0;
     f->pos = strchr(mode, 'a') ? f->size : 0;
     for (int i = 0; i < JK_WIN_COUNT; i++) f->winOff[i] = -1;
+    strncpy(f->path, fpath, sizeof(f->path) - 1);
+    jk_esp_file_register(f);
     return (stdFile_t)f;
 }
 
@@ -86,7 +121,8 @@ int jk_esp_file_close(stdFile_t h)
 {
     jk_esp_file_t* f = (jk_esp_file_t*)h;
     if (!f) return -1;
-    for (int i = 0; i < JK_WIN_COUNT; i++) free(f->win[i]);
+    jk_esp_file_unregister(f);
+    for (int i = 0; i < JK_WIN_COUNT; i++) jk_esp_free(f->win[i]);
     int ret = close(f->fd);
     free(f);
     return ret;

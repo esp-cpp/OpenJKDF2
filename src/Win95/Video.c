@@ -117,6 +117,16 @@ static __attribute__((unused)) void Video_swBlitScaledKeyed(tVBuffer* pDst, tVBu
     }
 }
 
+// Added: release the software world buffer / canvas (engine shutdown)
+void Video_swFreeWorldBuffer(void)
+{
+#ifdef TARGET_ESP32
+    if (Video_pSwWorldCanvas) { rdCanvas_Free(Video_pSwWorldCanvas); Video_pSwWorldCanvas = NULL; }
+#endif
+    if (Video_pSwWorldBuffer) { stdDisplay_VBufferFree(Video_pSwWorldBuffer); Video_pSwWorldBuffer = NULL; }
+    Video_swWorldPresentPending = 0;
+}
+
 // "One software frame": composite the 2D overlays (HUD, and the overlay map when visible) that were
 // drawn into their own 640x480-logical / full-res buffers INTO the full-resolution software world
 // buffer, so the whole frame is a single software image (like JK's original all-software renderer)
@@ -230,6 +240,9 @@ void Video_Shutdown()
 {
     stdPlatform_Printf("OpenJKDF2: %s\n", __func__);
     
+#ifdef RDRASTER_SOFTWARE_RENDERER
+    Video_swFreeWorldBuffer(); // Added
+#endif
     sithCamera_Shutdown();
     jkHud_Shutdown();
     if (Main_bMotsCompat) {

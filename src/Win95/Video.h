@@ -42,6 +42,7 @@ tVBuffer* Video_swEnsureWorldBuffer(void);
 // single software image. Called after the HUD is drawn, before std3D_DrawMenu presents. No-op unless
 // the software renderer rendered the world this frame.
 void Video_swCompositeOverlaysIntoWorld(void);
+void Video_swFreeWorldBuffer(void);
 #endif
 
 //static void (*Video_camera_related)() = (void*)Video_camera_related_ADDR;
