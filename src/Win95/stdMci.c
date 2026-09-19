@@ -501,7 +501,130 @@ flex_d_t stdMci_GetTrackLength(int track)
 
 #endif // STDMCI_DC_CDDA
 
-#elif defined(STDSOUND_NULL) || defined(STDSOUND_MAXMOD) || defined(STDSOUND_ESP32) || defined(ARCH_WASM)
+#elif defined(STDSOUND_ESP32)
+// ESP32: the soundtrack (GOG / Steam MUSIC/Track*.ogg, or disc dumps under
+// MUSIC/<cd>/) is streamed by the platform glue (jk_esp_music_*), which
+// decodes Ogg Vorbis on a background task and mixes it into the software
+// mixer's output. Track-number -> file resolution mirrors the SDL backend.
+#include "jk_esp.h"
+
+int stdMci_trackFrom;
+int stdMci_trackTo;
+int stdMci_trackCurrent;
+int stdMci_music;
+
+int stdMci_Startup()
+{
+    stdMci_uDeviceID = 0;
+    stdMci_bInitted = 1;
+    stdMci_bIsGOG = 1;
+    return 1;
+}
+
+void stdMci_Shutdown()
+{
+    jk_esp_music_stop();
+    stdMci_bInitted = 0;
+    stdMci_trackFrom = 0;
+    stdMci_trackTo = 0;
+    stdMci_trackCurrent = 0;
+    stdMci_music = 0;
+    stdMci_bIsGOG = 1;
+}
+
+static int stdMci_esp32TryPlay(const char* fpath)
+{
+    return jk_esp_music_open(fpath);
+}
+
+// Start `track`; returns 1 if a file was found for it
+static int stdMci_trackStart(int track)
+{
+    char tmp[256];
+    int cdNum = 1;
+    if (jkMain_pEpisodeEnt)
+        cdNum = jkMain_pEpisodeEnt->cdNum;
+    else if (jkMain_pEpisodeEnt2)
+        cdNum = jkMain_pEpisodeEnt2->cdNum;
+    // GOG only reports real track IDs, and does not have any disk 2s
+    if (cdNum > 1 && stdMci_bIsGOG) {
+        stdMci_bIsGOG = 0;
+        stdPlatform_Printf("stdMci: Seeing CD number >1 (%u), assuming this is an OG disk install with offsetted tracks...\n", cdNum);
+    }
+    // If we're getting a >12 track number, it's definitely GOG
+    if (track > 12 && !stdMci_bIsGOG) {
+        stdPlatform_Printf("stdMci: Seeing a >12 track number (%u), assuming this is a GOG install with no offsets...\n", track);
+        stdMci_bIsGOG = 1;
+    }
+    stdMci_trackCurrent = track;
+    stdMci_music = 1;
+    // disc dumps
+    snprintf(tmp, 255, "MUSIC/%d/Track%d.ogg", cdNum, track);
+    if (stdMci_esp32TryPlay(tmp)) return 1;
+    if (track < 10) {
+        snprintf(tmp, 255, "MUSIC/%d/Track%02d.ogg", cdNum, track);
+        if (stdMci_esp32TryPlay(tmp)) return 1;
+    }
+    // GOG / Steam: tracks as-is
+    if (stdMci_bIsGOG) {
+        snprintf(tmp, 255, "MUSIC/Track%d.ogg", track);
+        if (stdMci_esp32TryPlay(tmp)) return 1;
+        if (track < 10) {
+            snprintf(tmp, 255, "MUSIC/Track%02d.ogg", track);
+            if (stdMci_esp32TryPlay(tmp)) return 1;
+        }
+    }
+    // original CD track numbers -> GOG / Steam numbering (+10 disc 1, +20 disc 2)
+    if (track <= 12 && !Main_bMotsCompat) {
+        int track_shifted = track + (cdNum == 2 ? 20 : 10);
+        snprintf(tmp, 255, "MUSIC/Track%d.ogg", track_shifted);
+        if (stdMci_esp32TryPlay(tmp)) return 1;
+    }
+    stdPlatform_Printf("stdMci: no music file for track %d (cd %d)\n", track, cdNum);
+    stdMci_music = 0;
+    return 0;
+}
+
+int stdMci_Play(uint8_t trackFrom, uint8_t trackTo)
+{
+    if (!stdMci_bInitted) return 0;
+    stdMci_trackFrom = trackFrom;
+    stdMci_trackTo = trackTo;
+    return stdMci_trackStart(trackFrom);
+}
+
+void stdMci_SetVolume(flex_t vol)
+{
+    jk_esp_music_volume((float)vol);
+}
+
+void stdMci_Stop()
+{
+    stdPlatform_Printf("stdMci: stop music\n");
+    jk_esp_music_stop();
+    stdMci_music = 0;
+}
+
+// Polled by sithSoundMixer: 1 while music plays. A finished track advances
+// to the next one of the requested range; past the range the caller
+// restarts the range (the "loop the level's tracks" behaviour).
+int stdMci_CheckStatus()
+{
+    if (!stdMci_music) return 0;
+    if (jk_esp_music_playing()) return 1;
+    if (stdMci_trackCurrent < stdMci_trackTo) {
+        return stdMci_trackStart(stdMci_trackCurrent + 1);
+    }
+    stdMci_music = 0;
+    return 0;
+}
+
+flex_d_t stdMci_GetTrackLength(int track)
+{
+    return 0.0;
+}
+
+#elif defined(STDSOUND_NULL) || defined(STDSOUND_MAXMOD) || defined(ARCH_WASM)
 // Added: no SDL3_mixer for WASM (Emscripten's port system only has
 // -sUSE_SDL_MIXER=2, incompatible with this file's SDL3_mixer-API rewrite below)
 // -- fall back to the same no-op stub as STDSOUND_NULL rather than a build break.

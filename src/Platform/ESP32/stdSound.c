@@ -178,6 +178,8 @@ static size_t stdSound_Mix(int16_t* out, size_t frames)
     }
     if (voices > stdSound_maxVoices) stdSound_maxVoices = voices;
     stdSound_framesMixed += frames;
+    // the streamed soundtrack (stdMci) rides on top of the voices
+    jk_esp_music_mix(out, frames, stdSound_sampleRate);
     return frames;
 }
 
