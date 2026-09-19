@@ -188,6 +188,21 @@ int stdDisplay_SetMode(unsigned int modeIdx, const void *palette, int paged)
     return 1;
 }
 
+// Added: release the 2D buffers at engine shutdown (they outlive
+// stdDisplay_Close on purpose, since the GUI switches modes mid-run)
+void stdDisplay_ESP32_FreeBuffers(void)
+{
+    if (Video_menuBuffer.surface_lock_alloc) {
+        STD_FREE(Video_menuBuffer.surface_lock_alloc);
+        Video_menuBuffer.surface_lock_alloc = NULL;
+    }
+    if (Video_otherBuf.surface_lock_alloc) {
+        STD_FREE(Video_otherBuf.surface_lock_alloc);
+        Video_otherBuf.surface_lock_alloc = NULL;
+    }
+    Video_bModeSet = 0;
+}
+
 int stdDisplay_ClearRect(tVBuffer *buf, int fillColor, rdRect *rect)
 {
     return stdDisplay_VBufferFill(buf, fillColor, rect);

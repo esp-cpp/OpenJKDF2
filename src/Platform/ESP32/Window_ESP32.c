@@ -184,7 +184,9 @@ void jk_esp_engine_shutdown(void)
     Main_Shutdown();
     Window_bStarted = 0;
     {
+        extern void stdDisplay_ESP32_FreeBuffers(void);
         extern void jk_esp_file_dump_open(void);
+        stdDisplay_ESP32_FreeBuffers();
         jk_esp_file_dump_open();
     }
 }
