@@ -245,6 +245,11 @@ LABEL_28:
 
 done_close:
     stdConffile_Close();
+    // Added: a malformed vertex list left the arrays allocated on an entry the
+    // caller never counts (leaked once per level load)
+    if (pParticle->aVertices) { RDROID_FREE(pParticle->aVertices); pParticle->aVertices = NULL; }
+    if (pParticle->aVertMatCelNums) { RDROID_FREE(pParticle->aVertMatCelNums); pParticle->aVertMatCelNums = NULL; }
+    pParticle->numVertices = 0;
 done:
     return 0;
 }
