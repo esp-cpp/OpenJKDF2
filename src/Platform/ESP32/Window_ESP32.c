@@ -214,10 +214,52 @@ int Window_MessageLoop()
     jkGuiRend_UpdateController();
     jk_esp_input_t in;
     jk_esp_read_input(&in);
-    if (in.touch_down || Window_lastInput.touch_down || Window_bFlipRequested) {
+    const int keysChanged = memcmp(in.keys, Window_lastInput.keys, sizeof(in.keys)) != 0;
+    const int mouseActive = in.mouse_dx || in.mouse_dy || in.mouse_wheel
+                         || in.mouse_buttons != Window_lastInput.mouse_buttons;
+    if (in.touch_down || Window_lastInput.touch_down || Window_bFlipRequested || keysChanged || mouseActive) {
         Window_msg_main_handler(g_hWnd, WM_PAINT, 0, 0);
         Window_SdlUpdate();
         Window_bFlipRequested = 0;
+    }
+    return 0;
+}
+
+// HID keyboard usage -> the Windows virtual key the GUI reacts to (0 = none)
+// and the character for WM_CHAR (0 = none), for menu navigation / text entry.
+static int Window_HidUsageToVk(int usage, int shift, int* pChr)
+{
+    *pChr = 0;
+    if (usage >= 4 && usage <= 29) {            // a..z
+        *pChr = (shift ? 'A' : 'a') + (usage - 4);
+        return 'A' + (usage - 4);
+    }
+    if (usage >= 30 && usage <= 39) {           // 1..9, 0
+        static const char digits[] = "1234567890";
+        static const char shifted[] = "!@#$%^&*()";
+        *pChr = shift ? shifted[usage - 30] : digits[usage - 30];
+        return '0' + ((usage - 30 + 1) % 10);
+    }
+    switch (usage) {
+    case 40: *pChr = '\r'; return VK_RETURN;
+    case 41: *pChr = 27; return VK_ESCAPE;
+    case 42: *pChr = 8; return VK_BACK;
+    case 43: *pChr = '\t'; return VK_TAB;
+    case 44: *pChr = ' '; return VK_SPACE;
+    case 45: *pChr = shift ? '_' : '-'; return 0xBD;
+    case 46: *pChr = shift ? '+' : '='; return 0xBB;
+    case 54: *pChr = shift ? '<' : ','; return 0xBC;
+    case 55: *pChr = shift ? '>' : '.'; return 0xBE;
+    case 76: return VK_DELETE;
+    case 79: return VK_RIGHT;
+    case 80: return VK_LEFT;
+    case 81: return VK_DOWN;
+    case 82: return VK_UP;
+    case 88: *pChr = '\r'; return VK_RETURN;   // keypad enter
+    default: break;
+    }
+    if (usage >= 58 && usage <= 69) {           // F1..F12
+        return 0x70 + (usage - 58);
     }
     return 0;
 }
@@ -261,6 +303,49 @@ void Window_SdlUpdate()
         }
         if (released & keymap[i].mask) {
             Window_msg_main_handler(g_hWnd, WM_KEYUP, keymap[i].vk, 0);
+        }
+    }
+
+    // USB keyboard -> key messages for the 2D GUI (menus, text entry)
+    {
+        const int shift = ((in.keys[0xE1 >> 3] >> (0xE1 & 7)) & 1) || ((in.keys[0xE5 >> 3] >> (0xE5 & 7)) & 1);
+        for (int usage = 4; usage < 0xE0; usage++) {
+            const int now = (in.keys[usage >> 3] >> (usage & 7)) & 1;
+            const int was = (last.keys[usage >> 3] >> (usage & 7)) & 1;
+            if (now == was) continue;
+            int chr = 0;
+            const int vk = Window_HidUsageToVk(usage, shift, &chr);
+            if (!vk) continue;
+            if (now) {
+                Window_msg_main_handler(g_hWnd, WM_KEYFIRST, vk, 0);
+                if (chr)
+                    Window_msg_main_handler(g_hWnd, WM_CHAR, chr, 0);
+            } else {
+                Window_msg_main_handler(g_hWnd, WM_KEYUP, vk, 0);
+            }
+        }
+    }
+
+    // USB mouse -> cursor for the 2D GUI (in-game, stdControl takes the
+    // motion as look input instead)
+    if (!jkGame_isDDraw && (in.mouse_dx || in.mouse_dy || in.mouse_buttons != last.mouse_buttons)) {
+        int dx = 0, dy = 0, wheel = 0;
+        jk_esp_mouse_take(&dx, &dy, &wheel);
+        Window_mouseX += dx;
+        Window_mouseY += dy;
+        if (Window_mouseX < 0) Window_mouseX = 0;
+        if (Window_mouseY < 0) Window_mouseY = 0;
+        if (Window_mouseX > 639) Window_mouseX = 639;
+        if (Window_mouseY > 479) Window_mouseY = 479;
+        uint32_t pos = (Window_mouseX & 0xFFFF) | ((Window_mouseY << 16) & 0xFFFF0000);
+        Window_msg_main_handler(g_hWnd, WM_MOUSEMOVE, 0, pos);
+        const int leftNow = in.mouse_buttons & 1, leftWas = last.mouse_buttons & 1;
+        if (leftNow && !leftWas) {
+            Window_bMouseLeft = 1;
+            Window_msg_main_handler(g_hWnd, WM_LBUTTONDOWN, 1, pos);
+        } else if (!leftNow && leftWas) {
+            Window_bMouseLeft = 0;
+            Window_msg_main_handler(g_hWnd, WM_LBUTTONUP, 0, pos);
         }
     }
 

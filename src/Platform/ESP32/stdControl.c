@@ -829,7 +829,15 @@ void stdControl_ReadControls()
         sampleTime_last = stdPlatform_GetTimeMsec();
     }
 
-    // touch drag -> relative look (mouse) input; a USB mouse feeds mouse_dx/dy
+    // USB keyboard: HID usages are SDL scancodes, which stdControl_aSdlToDik
+    // maps onto the engine's DirectInput key numbers
+    for (int usage = 0; usage < 256; usage++) {
+        if (!stdControl_aSdlToDik[usage]) continue;
+        int down = (in.keys[usage >> 3] >> (usage & 7)) & 1;
+        stdControl_SetSDLKeydown(usage, down, stdControl_curReadTime);
+    }
+
+    // touch drag -> relative look (mouse) input
     static int lastTouchX = -1, lastTouchY = -1;
     if (in.touch_down) {
         if (lastTouchX >= 0) {
@@ -841,8 +849,17 @@ void stdControl_ReadControls()
     } else {
         lastTouchX = lastTouchY = -1;
     }
-    Window_lastXRel += in.mouse_dx;
-    Window_lastYRel += in.mouse_dy;
+    // USB mouse: motion since the last read, buttons as keys
+    {
+        int dx = 0, dy = 0, wheel = 0;
+        jk_esp_mouse_take(&dx, &dy, &wheel);
+        Window_lastXRel += dx;
+        Window_lastYRel += dy;
+        Window_mouseWheelY += wheel;
+        stdControl_UpdateKeyState(KEY_MOUSE_B1, !!(in.mouse_buttons & 1), stdControl_curReadTime);
+        stdControl_UpdateKeyState(KEY_MOUSE_B2, !!(in.mouse_buttons & 2), stdControl_curReadTime);
+        stdControl_UpdateKeyState(KEY_MOUSE_B3, !!(in.mouse_buttons & 4), stdControl_curReadTime);
+    }
 
     stdControl_ReadMouse();
     stdControl_lastReadTime = stdControl_curReadTime;
