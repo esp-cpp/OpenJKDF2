@@ -791,10 +791,13 @@ void stdControl_ReadControls()
         stdControl_UpdateKeyState(KEY_JOY1_B7, !!(keys_held & KEY_SELECT) /* button val */, stdControl_curReadTime);
         //stdControl_UpdateKeyState(KEY_JOY1_B8, !!(keys_held & KEY_START) /* button val */, stdControl_curReadTime);
 
-        stdControl_UpdateKeyState(KEY_JOY1_HLEFT,  !!(keys_held & KEY_LEFT) /* button val */, stdControl_curReadTime);
-        stdControl_UpdateKeyState(KEY_JOY1_HUP,    !!(keys_held & KEY_UP) /* button val */, stdControl_curReadTime);
-        stdControl_UpdateKeyState(KEY_JOY1_HRIGHT, !!(keys_held & KEY_RIGHT) /* button val */, stdControl_curReadTime);
-        stdControl_UpdateKeyState(KEY_JOY1_HDOWN,  !!(keys_held & KEY_DOWN) /* button val */, stdControl_curReadTime);
+        // the d-pad / left stick arrive as the engine's W/A/S/D keys (see
+        // jk_esp_read_input); the joystick hat is not fed, its default binds
+        // would turn instead of strafe
+        stdControl_UpdateKeyState(KEY_JOY1_HLEFT,  0, stdControl_curReadTime);
+        stdControl_UpdateKeyState(KEY_JOY1_HUP,    0, stdControl_curReadTime);
+        stdControl_UpdateKeyState(KEY_JOY1_HRIGHT, 0, stdControl_curReadTime);
+        stdControl_UpdateKeyState(KEY_JOY1_HDOWN,  0, stdControl_curReadTime);
 
         if (keys_held & KEY_LEFT) {
             //stdControl_aAxisStates[AXIS_JOY1_X] = -0x7FFF;
