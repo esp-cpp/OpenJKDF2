@@ -1089,7 +1089,9 @@ int rdMaterial_PurgeMaterialCache()
             }
 
             // On DSi, we can't purge the current frame nor the previous, because the previous is being rastered constantly by the hardware
-            if (pCacheMaterial->frameNum-std3D_frameCount > purgeLimit)
+            // (age = frames since last use; frameNum and std3D_frameCount are
+            // signed, so the original frameNum - frameCount was never > limit)
+            if (std3D_frameCount - pCacheMaterial->frameNum > purgeLimit)
             {
                 purgedAnything = 1;
                 

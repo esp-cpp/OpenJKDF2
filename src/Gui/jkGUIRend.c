@@ -27,6 +27,16 @@ static WindowDrawHandler_t jkGuiRend_idk2 = 0;
 static WindowDrawHandler_t jkGuiRend_idk = 0;
 static stdSound_buffer_t* jkGuiRend_DsoundHandles[4] = {0};
 static jkGuiMenu *jkGuiRend_activeMenu = NULL;
+
+#ifdef TARGET_ESP32
+// tab5-emu: unwind the active modal menu (as if Esc/back were clicked) so
+// a quit requested from outside the engine gets back to the frame loop
+void jkGuiRend_ESP32_CancelActiveMenu(void)
+{
+    if (jkGuiRend_activeMenu && !jkGuiRend_activeMenu->lastClicked)
+        jkGuiRend_activeMenu->lastClicked = -1;
+}
+#endif
 static tVBuffer* jkGuiRend_menuBuffer = NULL;
 static tVBuffer *jkGuiRend_texture_dword_8561E8 = NULL;
 

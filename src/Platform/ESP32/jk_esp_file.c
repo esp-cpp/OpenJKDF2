@@ -29,6 +29,40 @@ uint32_t jk_esp_file_nLoad = 0, jk_esp_file_nDirect = 0, jk_esp_file_nOpen = 0, 
 #define JK_WIN_BYTES (16 * 1024)
 #define JK_WIN_COUNT 4
 
+// The SD driver DMAs only into internal memory; a read into a PSRAM buffer
+// makes it allocate a bounce buffer per call, which fails outright once
+// internal DMA memory is exhausted (materials then load as garbage and the
+// engine retries them every frame). All reads go through this one staging
+// buffer instead, allocated on first use, released at shutdown.
+static uint8_t* jk_esp_file_staging = NULL;
+
+static ssize_t jk_esp_file_read_staged(int fd, void* dst, size_t len)
+{
+    if (!jk_esp_file_staging) {
+        jk_esp_file_staging = (uint8_t*)jk_esp_malloc_dma(JK_WIN_BYTES);
+        if (!jk_esp_file_staging) return read(fd, dst, len);
+    }
+    size_t done = 0;
+    while (done < len) {
+        size_t chunk = len - done < JK_WIN_BYTES ? len - done : JK_WIN_BYTES;
+        ssize_t n = read(fd, jk_esp_file_staging, chunk);
+        if (n < 0) return done ? (ssize_t)done : n;
+        if (n == 0) break;
+        memcpy((uint8_t*)dst + done, jk_esp_file_staging, (size_t)n);
+        done += (size_t)n;
+        if ((size_t)n < chunk) break;
+    }
+    return (ssize_t)done;
+}
+
+void jk_esp_file_release_buffers(void)
+{
+    if (jk_esp_file_staging) {
+        jk_esp_free_dma(jk_esp_file_staging);
+        jk_esp_file_staging = NULL;
+    }
+}
+
 typedef struct {
     int fd;
     int writable;
@@ -153,7 +187,7 @@ static size_t jk_esp_file_window(jk_esp_file_t* f, const uint8_t** out)
     long off = f->pos & ~(long)(JK_WIN_BYTES - 1);
     uint64_t t0 = jk_esp_time_us();
     if (lseek(f->fd, off, SEEK_SET) != off) return 0;
-    ssize_t n = read(f->fd, f->win[slot], JK_WIN_BYTES);
+    ssize_t n = jk_esp_file_read_staged(f->fd, f->win[slot], JK_WIN_BYTES);
     jk_esp_file_usLoad += jk_esp_time_us() - t0; jk_esp_file_nLoad++;
     if (n <= 0) { f->winOff[slot] = -1; return 0; }
     f->winOff[slot] = off;
@@ -170,7 +204,7 @@ size_t jk_esp_file_read(stdFile_t h, void* dst, size_t len)
     if (!f || !dst || !len) return 0;
     if (f->writable) {
         lseek(f->fd, f->pos, SEEK_SET);
-        ssize_t n = read(f->fd, dst, len);
+        ssize_t n = jk_esp_file_read_staged(f->fd, dst, len);
         if (n < 0) n = 0;
         f->pos += n;
         return (size_t)n;
@@ -179,7 +213,7 @@ size_t jk_esp_file_read(stdFile_t h, void* dst, size_t len)
     if (len >= JK_WIN_BYTES) {
         uint64_t t0 = jk_esp_time_us();
         lseek(f->fd, f->pos, SEEK_SET);
-        ssize_t n = read(f->fd, dst, len);
+        ssize_t n = jk_esp_file_read_staged(f->fd, dst, len);
         jk_esp_file_usDirect += jk_esp_time_us() - t0; jk_esp_file_nDirect++;
         if (n < 0) n = 0;
         f->pos += n;

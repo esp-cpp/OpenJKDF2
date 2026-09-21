@@ -147,6 +147,18 @@ int jk_esp_engine_frame(void)
         else if (profState == 1 && sithWorld_g_pLastLoadedWorld) { jk_prof_dump(48); profState = 2; }
     }
 #endif
+    // keep PSRAM headroom: the material cache only evicts on allocation
+    // failure, which would otherwise come after the general heap has been
+    // squeezed (fragmentation, allocations elsewhere failing first)
+    if (jk_esp_psram_free() < 3u * 1024 * 1024) {
+        extern int rdMaterial_PurgeMaterialCache(void);
+        static uint32_t purges = 0;
+        if (rdMaterial_PurgeMaterialCache()) {
+            if ((++purges % 50) == 1) {
+                jk_esp_log("material cache: purging (psram free %u KB)", (unsigned)(jk_esp_psram_free() / 1024));
+            }
+        }
+    }
     uint32_t now = jk_esp_time_ms();
     if (now - lastReport >= 5000) {
         jk_esp_log("frame %lu: isDDraw=%d menu=%p world=%p", (unsigned long)frames, jkGame_isDDraw,
@@ -188,6 +200,7 @@ void jk_esp_engine_shutdown(void)
         extern void jk_esp_file_dump_open(void);
         stdDisplay_ESP32_FreeBuffers();
         jk_esp_file_dump_open();
+    jk_esp_file_release_buffers();
     }
 }
 
@@ -209,8 +222,19 @@ int Window_ShowCursorUnwindowed(int a1)
     return stdControl_ShowMouseCursor(a1);
 }
 
+void jkGuiRend_ESP32_CancelActiveMenu(void);
+
 int Window_MessageLoop()
 {
+    // the engine's menus are modal loops inside one "frame": pause / resume
+    // (the emulator's own menu) and quit have to work from here too
+    if (jk_esp_park_point()) {
+        Window_bFlipRequested = 1; // redraw after the pause
+    }
+    if (jk_esp_quit_requested) {
+        jkGuiRend_ESP32_CancelActiveMenu();
+        return 0;
+    }
     jkGuiRend_UpdateController();
     jk_esp_input_t in;
     jk_esp_read_input(&in);
