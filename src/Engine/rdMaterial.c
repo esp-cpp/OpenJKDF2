@@ -1070,6 +1070,24 @@ void rdMaterial_AddMaterialToCacheList(rdMaterial *pMaterial) {
     pMaterial->frameNum = std3D_frameCount;
 }
 
+// Added (tab5-emu): one pass over the LRU list, evicting only materials not
+// used for `minAge` frames; no cascade (see rdMaterial_PurgeMaterialCache).
+// Returns the number of materials evicted.
+int rdMaterial_PurgeMaterialCacheOlderThan(int minAge)
+{
+    int purged = 0;
+    rdMaterial* pNextCachedMaterial = NULL;
+    for ( rdMaterial* pCacheMaterial = rdMaterial_pFirstMatCache; pCacheMaterial; pCacheMaterial = pNextCachedMaterial )
+    {
+        pNextCachedMaterial = pCacheMaterial->pNextCachedMaterial;
+        if (std3D_frameCount - pCacheMaterial->frameNum <= minAge)
+            break; // the list is ordered by last use: the rest is newer
+        rdMaterial_ResetCacheInfo(pCacheMaterial);
+        purged++;
+    }
+    return purged;
+}
+
 int rdMaterial_PurgeMaterialCache()
 {
     //printf("Purge mat... %d\n", rdMaterial_numCachedMaterials);

@@ -147,16 +147,21 @@ int jk_esp_engine_frame(void)
         else if (profState == 1 && sithWorld_g_pLastLoadedWorld) { jk_prof_dump(48); profState = 2; }
     }
 #endif
-    // keep PSRAM headroom: the material cache only evicts on allocation
-    // failure, which would otherwise come after the general heap has been
-    // squeezed (fragmentation, allocations elsewhere failing first)
-    if (jk_esp_psram_free() < 3u * 1024 * 1024) {
-        extern int rdMaterial_PurgeMaterialCache(void);
-        static uint32_t purges = 0;
-        if (rdMaterial_PurgeMaterialCache()) {
-            if ((++purges % 50) == 1) {
-                jk_esp_log("material cache: purging (psram free %u KB)", (unsigned)(jk_esp_psram_free() / 1024));
-            }
+    // keep PSRAM headroom: the engine's own purge only runs on allocation
+    // failure and then cascades down to evicting textures used a second ago.
+    // Evict gently here instead: materials unused for ~a minute, only when
+    // memory is getting tight.
+    if (jk_esp_psram_free() < 2560u * 1024) {
+        extern int rdMaterial_PurgeMaterialCacheOlderThan(int minAge);
+        static uint32_t purgeCalls = 0;
+        int n = rdMaterial_PurgeMaterialCacheOlderThan(900);
+        if (n && (purgeCalls++ % 20) == 0) {
+            jk_esp_log("material cache: evicted %d unused materials (psram free %u KB)", n, (unsigned)(jk_esp_psram_free() / 1024));
+        }
+        static int dumped = 0;
+        if (!dumped) {
+            dumped = 1;
+            jk_esp_alloc_dump(30); // once: what holds the memory
         }
     }
     uint32_t now = jk_esp_time_ms();
