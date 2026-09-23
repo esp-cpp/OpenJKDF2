@@ -206,6 +206,11 @@ void jk_esp_engine_shutdown(void)
         stdDisplay_ESP32_FreeBuffers();
         jk_esp_file_dump_open();
     jk_esp_file_release_buffers();
+    {
+        extern void rdZRaster_ESP32_FreeBuffers(void);
+        rdZRaster_ESP32_FreeBuffers();
+    }
+    jk_esp_music_deinit();
     }
 }
 

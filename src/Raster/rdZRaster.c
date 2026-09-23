@@ -38,6 +38,20 @@ void rdZRaster_Startup(void)
 }
 
 // Alloc/resize the depth buffer to a target vbuffer and clear it to "infinitely far" (0 == 1/w=0).
+#ifdef TARGET_ESP32
+// tab5-emu: the z-buffer (~400 KB) is only ever resized, never freed; release
+// it at engine shutdown so it does not fragment the heap across sessions
+void rdZRaster_ESP32_FreeBuffers(void)
+{
+    if (rdZRaster_pZBuffer) {
+        _free(rdZRaster_pZBuffer);
+        rdZRaster_pZBuffer = NULL;
+    }
+    rdZRaster_zbWidth = 0;
+    rdZRaster_zbHeight = 0;
+}
+#endif
+
 static void rdZRaster_SizeAndClear(tVBuffer* pVBuffer)
 {
     if (pVBuffer == NULL)
