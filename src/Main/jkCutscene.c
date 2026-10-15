@@ -804,6 +804,27 @@ void jkCutscene_smacker_process_audio()
     }
 }
 
+void jkCutscene_smacker_smusher_audio_queue();
+
+// Added: one jkCutscene_smacker_smusher_audio_queue() call moves at most one
+// decoded audio packet (or the rest of one) into the sound buffers. When
+// decoding is slow the engine loops about once per video frame, so audio
+// backed up in the packet queue and the sound stream underran. Pump until
+// nothing more moves.
+static void jkCutscene_smacker_smusher_audio_drain()
+{
+    for (int i = 0; i < AUDIO_QUEUE_DEPTH; i++) {
+        int32_t read_idx = jkCutscene_audio_queue_read_idx;
+        uint32_t len = jkCutscene_audio_len;
+        int32_t written = jkCutscene_currentAudioWritten;
+        stdSound_buffer_t* cur = jkCutscene_currentAudio;
+        jkCutscene_smacker_smusher_audio_queue();
+        if (read_idx == jkCutscene_audio_queue_read_idx && len == jkCutscene_audio_len
+            && written == jkCutscene_currentAudioWritten && cur == jkCutscene_currentAudio)
+            break;
+    }
+}
+
 void jkCutscene_smacker_smusher_audio_queue() {
     if (jkCutscene_audio_queue_read_idx != jkCutscene_audio_queue_write_idx || jkCutscene_audio_len || jkCutscene_currentAudioWritten < jkCutscene_currentAudioBufSize) {
         
@@ -914,7 +935,7 @@ int jkCutscene_smacker_process()
     flex64_t delta = cur_displayFrame - last_displayFrame;
 
 
-    jkCutscene_smacker_smusher_audio_queue();
+    jkCutscene_smacker_smusher_audio_drain();
 
     if (delta <= usPerFrame) return 0;
     //printf("%f %f %f\n", delta, usPerFrame, extraUs);
@@ -1017,7 +1038,7 @@ int jkCutscene_smusher_process()
     flex64_t usPerFrame = jkCutscene_smk_usf;
     flex64_t delta = cur_displayFrame - last_displayFrame;
 
-    jkCutscene_smacker_smusher_audio_queue();
+    jkCutscene_smacker_smusher_audio_drain();
 
     if (delta <= usPerFrame) return 0;
     //printf("%f %f %f\n", delta, usPerFrame, extraUs);

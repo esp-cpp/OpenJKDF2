@@ -77,6 +77,19 @@ static int stdSound_bInitted = 0;
 // diagnostics
 static uint32_t stdSound_framesMixed = 0;
 static uint32_t stdSound_maxVoices = 0;
+static uint32_t stdSound_streamUnderruns = 0;
+
+// Buffers chained with stdSound_BufferQueueAfterAnother (the cutscene and
+// movie audio streams) play back to back: the mixer moves on to the next
+// queued buffer, mid chunk, when the current one runs out, so a stream has
+// no gaps or overlaps. One stream at a time, identified by its owner (the
+// `bufPrev` the caller queues after).
+#define STDSOUND_STREAM_QUEUE (64)
+static stdSound_buffer_t* stdSound_streamOwner = NULL;
+static stdSound_buffer_t* stdSound_streamCur = NULL;
+static stdSound_buffer_t* stdSound_streamQueue[STDSOUND_STREAM_QUEUE];
+static int stdSound_streamHead = 0;
+static int stdSound_streamCount = 0;
 
 // remove a voice from the playing list; caller holds the audio lock
 static void stdSound_UnlistLocked(stdSound_buffer_t* buf)
@@ -89,6 +102,53 @@ static void stdSound_UnlistLocked(stdSound_buffer_t* buf)
             stdSound_aPlayingSounds[i] = NULL;
         }
     }
+}
+
+static void stdSound_StreamClearLocked(void)
+{
+    stdSound_streamOwner = NULL;
+    stdSound_streamCur = NULL;
+    stdSound_streamHead = 0;
+    stdSound_streamCount = 0;
+}
+
+static stdSound_buffer_t* stdSound_StreamPopLocked(void)
+{
+    if (!stdSound_streamCount) return NULL;
+    stdSound_buffer_t* buf = stdSound_streamQueue[stdSound_streamHead];
+    stdSound_streamHead = (stdSound_streamHead + 1) % STDSOUND_STREAM_QUEUE;
+    stdSound_streamCount--;
+    return buf;
+}
+
+// drop `buf` from the stream's queue (its data is being replaced). The
+// owner handle may itself be one of the stream's buffers (the cutscene
+// cycles through its buffers including the one it queues after), so this
+// keeps the stream going.
+static void stdSound_StreamForgetLocked(stdSound_buffer_t* buf)
+{
+    if (buf == stdSound_streamCur) stdSound_streamCur = NULL;
+    int kept = 0;
+    for (int i = 0; i < stdSound_streamCount; i++) {
+        stdSound_buffer_t* b = stdSound_streamQueue[(stdSound_streamHead + i) % STDSOUND_STREAM_QUEUE];
+        if (b != buf) stdSound_streamQueue[(stdSound_streamHead + kept++) % STDSOUND_STREAM_QUEUE] = b;
+    }
+    stdSound_streamCount = kept;
+}
+
+static int stdSound_PlayLocked(stdSound_buffer_t* buf, int loop)
+{
+    buf->isLooping = loop;
+    if (buf->isPlaying) return 1;
+    for (int i = 0; i < SITH_MIXER_NUMPLAYINGSOUNDS; i++) {
+        if (!stdSound_aPlayingSounds[i]) {
+            buf->currentSample = 0;
+            buf->isPlaying = 1;
+            stdSound_aPlayingSounds[i] = buf;
+            return 1;
+        }
+    }
+    return 0;
 }
 
 static int stdSound_FormatFor(int bStereo, int bitsPerSample)
@@ -145,7 +205,7 @@ static size_t stdSound_Mix(int16_t* out, size_t frames)
     for (int i = 0; i < SITH_MIXER_NUMPLAYINGSOUNDS; i++) {
         stdSound_buffer_t* buf = stdSound_aPlayingSounds[i];
         if (!buf || !buf->data || !buf->isPlaying || buf->vol <= 0.0) continue;
-        const uint32_t numFrames = buf->bufferBytes / stdSound_BytesPerFrame(buf->format);
+        uint32_t numFrames = buf->bufferBytes / stdSound_BytesPerFrame(buf->format);
         if (numFrames == 0) continue;
         voices++;
         const uint32_t rate = buf->freq > 0 ? (uint32_t)buf->freq : buf->nSamplesPerSec;
@@ -160,7 +220,26 @@ static size_t stdSound_Mix(int16_t* out, size_t frames)
                 if (buf->isLooping) {
                     pos = 0;
                     idx = 0;
+                } else if ((buf == stdSound_streamCur || buf == stdSound_streamOwner) && stdSound_streamCount) {
+                    // the stream continues seamlessly with its next buffer,
+                    // in this voice slot (same format, rate and volume)
+                    stdSound_buffer_t* next = stdSound_StreamPopLocked();
+                    pos -= numFrames << 16;
+                    buf->isPlaying = 0;
+                    buf->currentSample = 0;
+                    next->isPlaying = 1;
+                    next->isLooping = 0;
+                    stdSound_aPlayingSounds[i] = next;
+                    stdSound_streamCur = next;
+                    buf = next;
+                    numFrames = buf->bufferBytes / stdSound_BytesPerFrame(buf->format);
+                    idx = pos >> 16;
+                    if (!buf->data || idx >= numFrames) {
+                        stdSound_UnlistLocked(buf);
+                        break;
+                    }
                 } else {
+                    if (buf == stdSound_streamCur) stdSound_streamUnderruns++;
                     stdSound_UnlistLocked(buf);
                     break;
                 }
@@ -211,10 +290,12 @@ void stdSound_ESP32_Report(void)
     for (int i = 0; i < SITH_MIXER_NUMPLAYINGSOUNDS; i++) {
         if (stdSound_aPlayingSounds[i]) voices++;
     }
-    jk_esp_log("audio: %lu Hz, mixed %lu frames, %lu voices now, %lu max", (unsigned long)stdSound_sampleRate,
-               (unsigned long)stdSound_framesMixed, (unsigned long)voices, (unsigned long)stdSound_maxVoices);
+    jk_esp_log("audio: %lu Hz, mixed %lu frames, %lu voices now, %lu max, stream %d queued %lu underruns",
+               (unsigned long)stdSound_sampleRate, (unsigned long)stdSound_framesMixed, (unsigned long)voices,
+               (unsigned long)stdSound_maxVoices, stdSound_streamCount, (unsigned long)stdSound_streamUnderruns);
     stdSound_framesMixed = 0;
     stdSound_maxVoices = 0;
+    stdSound_streamUnderruns = 0;
 }
 
 int stdSound_Startup()
@@ -222,6 +303,7 @@ int stdSound_Startup()
     jkGuiSound_b3DSound = 0;
     jk_esp_audio_lock();
     memset(stdSound_aPlayingSounds, 0, sizeof(stdSound_aPlayingSounds));
+    stdSound_StreamClearLocked();
     jk_esp_audio_unlock();
     if (stdSound_bInitted) {
         return 1;
@@ -242,6 +324,7 @@ void stdSound_Shutdown()
 {
     jk_esp_audio_lock();
     memset(stdSound_aPlayingSounds, 0, sizeof(stdSound_aPlayingSounds));
+    stdSound_StreamClearLocked();
     jk_esp_audio_unlock();
 }
 
@@ -275,6 +358,7 @@ void* stdSound_BufferSetData(stdSound_buffer_t* sound, int bufferBytes, int32_t*
         *bufferMaxSize = bufferBytes;
     jk_esp_audio_lock();
     stdSound_UnlistLocked(sound);
+    stdSound_StreamForgetLocked(sound);
     if (sound->data && !sound->bIsCopy)
         STD_FREE(sound->data);
     sound->bufferBytes = 0;
@@ -298,27 +382,32 @@ int stdSound_BufferPlay(stdSound_buffer_t* buf, int loop)
 {
     if (!buf || !buf->data) return 0;
     jk_esp_audio_lock();
-    buf->isLooping = loop;
-    if (buf->isPlaying) {
-        jk_esp_audio_unlock();
-        return 1;
-    }
-    for (int i = 0; i < SITH_MIXER_NUMPLAYINGSOUNDS; i++) {
-        if (!stdSound_aPlayingSounds[i]) {
-            buf->currentSample = 0;
-            buf->isPlaying = 1;
-            stdSound_aPlayingSounds[i] = buf;
-            jk_esp_audio_unlock();
-            return 1;
-        }
-    }
+    int ret = stdSound_PlayLocked(buf, loop);
     jk_esp_audio_unlock();
-    return 0;
+    return ret;
 }
 
+// Queue bufNext to play when the stream owned by bufPrev runs out (or now,
+// if nothing of the stream is playing).
 int stdSound_BufferQueueAfterAnother(stdSound_buffer_t* bufPrev, stdSound_buffer_t* bufNext)
 {
-    return stdSound_BufferPlay(bufNext, 0);
+    if (!bufNext || !bufNext->data) return 0;
+    jk_esp_audio_lock();
+    if (bufPrev != stdSound_streamOwner) {
+        stdSound_StreamClearLocked();
+        stdSound_streamOwner = bufPrev;
+    }
+    stdSound_StreamForgetLocked(bufNext);
+    const int busy = (stdSound_streamCur && stdSound_streamCur->isPlaying) || (bufPrev && bufPrev->isPlaying);
+    int ret = 1;
+    if (busy && stdSound_streamCount < STDSOUND_STREAM_QUEUE) {
+        stdSound_streamQueue[(stdSound_streamHead + stdSound_streamCount++) % STDSOUND_STREAM_QUEUE] = bufNext;
+    } else {
+        stdSound_streamCur = bufNext;
+        ret = stdSound_PlayLocked(bufNext, 0);
+    }
+    jk_esp_audio_unlock();
+    return ret;
 }
 
 void stdSound_BufferUnqueueProcessed(stdSound_buffer_t* buf)
@@ -330,6 +419,8 @@ void stdSound_BufferRelease(stdSound_buffer_t* sound)
     if (!sound) return;
     jk_esp_audio_lock();
     stdSound_UnlistLocked(sound);
+    stdSound_StreamForgetLocked(sound);
+    if (sound == stdSound_streamOwner) stdSound_StreamClearLocked();
     if (sound->data && !sound->bIsCopy) {
         // duplicates share the sample data: silence any still playing it
         for (int i = 0; i < SITH_MIXER_NUMPLAYINGSOUNDS; i++) {
@@ -400,6 +491,10 @@ int stdSound_BufferStop(stdSound_buffer_t* buf)
     if (!buf) return 1;
     jk_esp_audio_lock();
     stdSound_UnlistLocked(buf);
+    if (buf == stdSound_streamOwner) {
+        if (stdSound_streamCur) stdSound_UnlistLocked(stdSound_streamCur);
+        stdSound_StreamClearLocked();
+    }
     jk_esp_audio_unlock();
     return 1;
 }
