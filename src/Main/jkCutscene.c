@@ -951,7 +951,13 @@ int jkCutscene_smacker_process()
         /*if (smk_is_keyframe(jkCutscene_smk)) {
             printf("Keyframe\n");
         }*/
+#ifdef TARGET_ESP32
+        // Added: Smacker frames are deltas on the previous one, so skipping
+        // the decode of a non-keyframe corrupts the picture until the next
+        // keyframe. Decode it anyway; only the presentation is skipped.
+#else
         smk_enable_video(jkCutscene_smk, smk_is_keyframe(jkCutscene_smk));
+#endif
         jkCutscene_smacker_process_audio();
 #ifdef TARGET_RETRO_HOMEBREW
         //pHS->suggestHeap(HEAP_FAST);
