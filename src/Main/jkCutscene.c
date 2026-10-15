@@ -9,6 +9,13 @@
 #include "World/jkPlayer.h"
 #include "Main/jkMain.h"
 #include "Main/Main.h"
+
+// Added: the cutscenes decoded here (libsmacker / smush) and drawn through the
+// menu buffer, rather than through the original Smacker DLL: SDL2 builds, the
+// retro homebrew ports and ESP32.
+#if defined(SDL2_RENDER) || defined(TARGET_RETRO_HOMEBREW) || defined(TARGET_ESP32)
+#define JKCUTSCENE_SOFT
+#endif
 #include "Main/jkStrings.h"
 #include "Main/smack.h"
 #include "Gui/jkGUI.h"
@@ -121,7 +128,7 @@ void smack_audio_callback(const uint8_t* data, size_t len)
 // Added
 void jkCutscene_CleanReset()
 {
-#if defined(SDL2_RENDER) || defined(TARGET_RETRO_HOMEBREW)
+#if defined(JKCUTSCENE_SOFT)
     for (int32_t i = 0; i < AUDIO_QUEUE_DEPTH; i++) {
         if (jkCutscene_audio_queue[i]) {
             free((void*)jkCutscene_audio_queue[i]);
@@ -276,12 +283,6 @@ int jkCutscene_sub_421310(char* fpath)
     if (jkPlayer_setDisableCutscenes) {
         return 1;
     }
-#if defined(TARGET_ESP32)
-    // TODO: present SMK frames through the ESP32 platform layer; until then
-    // skip the videos (the DSi port does the same).
-    printf("vid skip %s\n", fpath);
-    return 1;
-#endif
 
     char tmp[512];
     size_t len = _strlen(fpath);
@@ -300,12 +301,12 @@ int jkCutscene_sub_421310(char* fpath)
     }
 #endif
     
-#if !defined(SDL2_RENDER) && !defined(TARGET_RETRO_HOMEBREW)
+#if !defined(JKCUTSCENE_SOFT)
     if (!openjkdf2_bIsKVM)
         return _jkCutscene_sub_421310(tmp);
 #endif
 
-#if defined(SDL2_RENDER) || defined(TARGET_RETRO_HOMEBREW)
+#if defined(JKCUTSCENE_SOFT)
     sithSoundMixer_StopSong();
     stdMci_Stop();
 
@@ -335,7 +336,6 @@ int jkCutscene_sub_421310(char* fpath)
     pHS->suggestHeap(HEAP_FAST);
 #endif
 
-    jkCutscene_pSmush = smush_from_fpath(tmp);
     if (!jkCutscene_pSmush)
     {
         jkCutscene_bSmkValid = 0;
@@ -512,18 +512,18 @@ int jkCutscene_sub_421410()
 {
     stdPlatform_Printf("OpenJKDF2: %s\n", __func__);
     
-#if !defined(SDL2_RENDER) && !defined(TARGET_RETRO_HOMEBREW)
+#if !defined(JKCUTSCENE_SOFT)
     if ( !jkCutscene_isRendering )
         return 0;
 #endif
     Window_RemoveMsgHandler(jkCutscene_Handler);
 
-#if !defined(SDL2_RENDER) && !defined(TARGET_RETRO_HOMEBREW)
+#if !defined(JKCUTSCENE_SOFT)
     if (!openjkdf2_bIsKVM)
         smack_sub_426940();
 #endif
 
-#if defined(SDL2_RENDER) || defined(TARGET_RETRO_HOMEBREW)
+#if defined(JKCUTSCENE_SOFT)
     for (int32_t i = 0; i < AUDIO_QUEUE_DEPTH; i++) {
         if (jkCutscene_audio_queue[i]) {
             free((void*)jkCutscene_audio_queue[i]);
@@ -587,7 +587,7 @@ int jkCutscene_smack_related_loops()
         return 1;
     if ( !jkCutscene_55AA54 && g_app_suspended )
     {
-#if !defined(SDL2_RENDER) && !defined(TARGET_RETRO_HOMEBREW)
+#if !defined(JKCUTSCENE_SOFT)
         if (!openjkdf2_bIsKVM)
             smack_finished = smack_process();
         else
@@ -606,7 +606,7 @@ int jkCutscene_smack_related_loops()
             if ( jkCutscene_isRendering )
             {
                 Window_RemoveMsgHandler(jkCutscene_Handler);
-#if !defined(SDL2_RENDER) && !defined(TARGET_RETRO_HOMEBREW)
+#if !defined(JKCUTSCENE_SOFT)
                 if (!openjkdf2_bIsKVM)
                     smack_sub_426940();
 #endif
@@ -683,7 +683,7 @@ int jkCutscene_smack_related_loops()
             return smack_finished;
         }
     }
-#if defined(SDL2_RENDER) || defined(TARGET_RETRO_HOMEBREW)
+#if defined(JKCUTSCENE_SOFT)
     else
     {
         stdDisplay_DDrawGdiSurfaceFlip();
@@ -707,7 +707,7 @@ int jkCutscene_PauseShow(int unk)
         stdDisplay_VBufferFill(&Video_otherBuf, 0, &jkCutscene_rect2);
     }
 
-#if defined(SDL2_RENDER) || defined(TARGET_RETRO_HOMEBREW)
+#if defined(JKCUTSCENE_SOFT)
     stdDisplay_VBufferLock(Video_pMenuBuffer);
     stdDisplay_VBufferCopy(Video_pMenuBuffer, jkCutscene_frameBuf, 0, 50, NULL, 0);
     stdDisplay_VBufferFill(Video_pMenuBuffer, 0, &jkCutscene_rect1);
@@ -718,7 +718,7 @@ int jkCutscene_PauseShow(int unk)
 #endif
 
     result = Main_bWindowGUI;
-#if !defined(SDL2_RENDER) && !defined(TARGET_RETRO_HOMEBREW)
+#if !defined(JKCUTSCENE_SOFT)
     if ( Main_bWindowGUI )
         result = stdDisplay_DDrawGdiSurfaceFlip();
 #endif
@@ -732,7 +732,7 @@ int jkCutscene_Handler(HWND a1, UINT a2, WPARAM a3, LPARAM a4, LRESULT *a5)
     switch ( a2 )
     {
         case WM_CLOSE:
-#if !defined(SDL2_RENDER) && !defined(TARGET_RETRO_HOMEBREW)
+#if !defined(JKCUTSCENE_SOFT)
             if (!openjkdf2_bIsKVM)
                 smack_sub_426940();
 #endif
@@ -752,12 +752,12 @@ int jkCutscene_Handler(HWND a1, UINT a2, WPARAM a3, LPARAM a4, LRESULT *a5)
             else if ( a3 == VK_SPACE )
             {
                 jkCutscene_55AA54 = !jkCutscene_55AA54;
-#if !defined(SDL2_RENDER) && !defined(TARGET_RETRO_HOMEBREW)
+#if !defined(JKCUTSCENE_SOFT)
                 if (!openjkdf2_bIsKVM)
                     smack_off(jkCutscene_55AA54);
 #endif
 
-#if defined(SDL2_RENDER) || defined(TARGET_RETRO_HOMEBREW)
+#if defined(JKCUTSCENE_SOFT)
                 if (jkCutscene_55AA54)
                 {
                     if (jkCutscene_audio[0])
@@ -782,7 +782,7 @@ int jkCutscene_Handler(HWND a1, UINT a2, WPARAM a3, LPARAM a4, LRESULT *a5)
     return 0;
 }
 
-#if defined(SDL2_RENDER) || defined(TARGET_RETRO_HOMEBREW)
+#if defined(JKCUTSCENE_SOFT)
 void jkCutscene_smacker_process_audio()
 {
     uint32_t frame = 0;

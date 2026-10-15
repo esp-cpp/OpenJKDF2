@@ -40,7 +40,40 @@ struct smk_huff16_t
 {
 	struct smk_huff8_t* t;
 	uint16_t cache[3];
+	struct smk_node_pool* pool; /* Added: where t's nodes come from */
 };
+
+/* Added: a 16-bit tree's nodes come from chunks rather than a calloc() each:
+   a movie's trees hold some 300k nodes, and a heap allocation apiece took
+   ~10 s to build them on an ESP32-P4 (PSRAM heap); a chunk also has no
+   per-node heap header. */
+#define SMK_POOL_NODES 8192
+struct smk_node_pool
+{
+	struct smk_node_pool* next;
+	uint32_t used;
+	struct smk_huff8_t nodes[SMK_POOL_NODES];
+};
+static struct smk_huff8_t* smk_pool_node(struct smk_node_pool** pp)
+{
+	struct smk_node_pool* p = *pp;
+	if (!p || p->used == SMK_POOL_NODES)
+	{
+		smk_malloc(p, sizeof(struct smk_node_pool)); /* zeroed */
+		p->next = *pp;
+		*pp = p;
+	}
+	return &p->nodes[p->used++];
+}
+static void smk_pool_free(struct smk_node_pool* p)
+{
+	while (p)
+	{
+		struct smk_node_pool* next = p->next;
+		free(p);
+		p = next;
+	}
+}
 
 /*********************** 8-BIT HUFF-TREE FUNCTIONS ***********************/
 /** safe build with built-in error jump */
@@ -191,16 +224,16 @@ error: ;
 
 /*********************** 16-BIT HUFF-TREE FUNCTIONS ***********************/
 /* safe bigtree build with built-in error jump */
-#define smk_huff16_build_rec(bs,cache,low8,hi8,p) \
+#define smk_huff16_build_rec(bs,cache,low8,hi8,pool,p) \
 { \
-	if (!(p = _smk_huff16_build_rec(bs, cache, low8, hi8))) \
+	if (!(p = _smk_huff16_build_rec(bs, cache, low8, hi8, pool))) \
 	{ \
 		fprintf(stderr, "libsmacker::smk_huff16_build_rec(" #bs ", " #cache ", " #low8 ", " #hi8 ", " #p ") - ERROR (file: %s, line: %lu)\n", __FILE__, (unsigned long)__LINE__); \
 		goto error; \
 	} \
 }
 /* Recursively builds a Big tree. */
-static struct smk_huff8_t* _smk_huff16_build_rec(struct smk_bit_t* bs, const uint16_t cache[3], const struct smk_huff8_t* low8, const struct smk_huff8_t* hi8)
+static struct smk_huff8_t* _smk_huff16_build_rec(struct smk_bit_t* bs, const uint16_t cache[3], const struct smk_huff8_t* low8, const struct smk_huff8_t* hi8, struct smk_node_pool** pool)
 {
 	struct smk_huff8_t* ret = NULL;
 
@@ -216,16 +249,16 @@ static struct smk_huff8_t* _smk_huff16_build_rec(struct smk_bit_t* bs, const uin
 	/* Get the first bit */
 	smk_bs_read_1(bs, bit);
 
-	/* Malloc a structure. */
-	smk_malloc(ret, sizeof(struct smk_huff8_t));
+	/* A node from the tree's pool (zeroed). */
+	ret = smk_pool_node(pool);
 
 	if (bit)
 	{
 		/* Recursively attempt to build the Left branch. */
-		smk_huff16_build_rec(bs, cache, low8, hi8, ret->b0);
+		smk_huff16_build_rec(bs, cache, low8, hi8, pool, ret->b0);
 
 		/* Recursively attempt to build the Left branch. */
-		smk_huff16_build_rec(bs, cache, low8, hi8, ret->u.b1);
+		smk_huff16_build_rec(bs, cache, low8, hi8, pool, ret->u.b1);
 
 		/* return branch pointer here */
 		return ret;
@@ -261,7 +294,7 @@ static struct smk_huff8_t* _smk_huff16_build_rec(struct smk_bit_t* bs, const uin
 	return ret;
 
 error:
-	smk_huff8_free(ret);
+	/* (the pool's nodes go with the tree) */
 	return NULL;
 }
 
@@ -307,7 +340,7 @@ struct smk_huff16_t* _smk_huff16_build(struct smk_bit_t* bs)
 	}
 
 	/* Finally, call recursive function to retrieve the Bigtree. */
-	smk_huff16_build_rec(bs, big->cache, low8, hi8, big->t);
+	smk_huff16_build_rec(bs, big->cache, low8, hi8, &big->pool, big->t);
 
 	/* Done with 8-bit hufftrees, free them. */
 	smk_huff8_free(hi8);
@@ -414,9 +447,10 @@ void smk_huff16_free(struct smk_huff16_t* big)
 	/* Sanity check: do not double-free */
 	smk_assert(big);
  
-	/* free the subtree */
-	if (big->t)
-		smk_huff8_free(big->t);
+	/* free the subtree: its nodes are the pool's */
+	smk_pool_free(big->pool);
+	big->pool = NULL;
+	big->t = NULL;
 
 	/* free the bigtree */
 	smk_free(big);

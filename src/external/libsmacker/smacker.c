@@ -405,12 +405,18 @@ static smk smk_open_generic(const uint8_t m, union smk_read_t fp, uint32_t size,
 		/* MODE_STREAM: don't read anything now, just precompute offsets.
 			use fseek to verify that the file is "complete" */
 		smk_malloc(s->source.file.chunk_offset,(s->f + s->ring_frame) * sizeof(uint32_t));
-		for (temp_u = 0; temp_u < (s->f + s->ring_frame); temp_u ++)
+		/* Added: the offsets are a running sum; one seek past the last chunk
+		   checks the file (a seek per frame took seconds on an SD card's FAT) */
 		{
-			s->source.file.chunk_offset[temp_u] = ftell(fp.file);
-			if (fseek(fp.file,s->chunk_size[temp_u],SEEK_CUR))
+			long off = ftell(fp.file);
+			for (temp_u = 0; temp_u < (s->f + s->ring_frame); temp_u ++)
 			{
-				fprintf(stderr,"libsmacker::smk_open - ERROR: fseek to frame %lu not OK.\n",temp_u);
+				s->source.file.chunk_offset[temp_u] = (uint32_t)off;
+				off += s->chunk_size[temp_u];
+			}
+			if (fseek(fp.file,off,SEEK_SET))
+			{
+				fprintf(stderr,"libsmacker::smk_open - ERROR: fseek past the last frame not OK.\n");
 				perror ("\tError reported was");
 				goto error;
 			}
