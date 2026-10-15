@@ -41,7 +41,24 @@ struct smk_huff16_t
 	struct smk_huff8_t* t;
 	uint16_t cache[3];
 	struct smk_node_pool* pool; /* Added: where t's nodes come from */
+	uint32_t* table; /* Added: lookup tables (see smk_huff16_table) */
+	uint32_t table_len;
 };
+
+/* Added: a 16-bit tree is decoded through multi-level lookup tables instead
+   of a walk down the tree one bit at a time: the root table is indexed by
+   the next SMK_ROOT_BITS bits of the stream (LSB first, the order Smacker
+   reads them), and codes longer than that continue in SMK_SUB_BITS bit
+   subtables. Entries:
+     leaf:     value (bits 0-15) | code length within the level (16-20)
+               | escape code (21-22; 3 = none)
+     subtable: SMK_SUB_FLAG | index of the subtable in `table`
+   The walk took most of a frame's decode time on an ESP32-P4, where the
+   ~300k nodes of a movie's trees live in PSRAM. */
+#define SMK_ROOT_BITS 12
+#define SMK_SUB_BITS 3
+#define SMK_SUB_FLAG 0x80000000u
+#define SMK_ESC_NONE 3u
 
 /* Added: a 16-bit tree's nodes come from chunks rather than a calloc() each:
    a movie's trees hold some 300k nodes, and a heap allocation apiece took
@@ -73,6 +90,32 @@ static void smk_pool_free(struct smk_node_pool* p)
 		free(p);
 		p = next;
 	}
+}
+
+/* Added: the next 25+ bits of the stream, LSB first (zeros past the end) */
+static inline uint32_t smk_bs_peek(const struct smk_bit_t* bs)
+{
+	const uint8_t* b = bs->buffer + bs->byte_num;
+	uint32_t v;
+	if (bs->byte_num + 4 <= bs->size)
+	{
+		v = (uint32_t)b[0] | ((uint32_t)b[1] << 8) | ((uint32_t)b[2] << 16) | ((uint32_t)b[3] << 24);
+	}
+	else
+	{
+		uint32_t i;
+		v = 0;
+		for (i = 0; bs->byte_num + i < bs->size && i < 4; i ++)
+			v |= (uint32_t)b[i] << (8 * i);
+	}
+	return v >> bs->bit_num;
+}
+
+static inline void smk_bs_skip(struct smk_bit_t* bs, uint32_t n)
+{
+	uint32_t bit = bs->bit_num + n;
+	bs->byte_num += bit >> 3;
+	bs->bit_num = bit & 7;
 }
 
 /*********************** 8-BIT HUFF-TREE FUNCTIONS ***********************/
@@ -130,35 +173,28 @@ error:
 }
 
 /* Look up an 8-bit value from a basic huff tree.
-	Return -1 on error. */
-int16_t _smk_huff8_lookup(struct smk_bit_t* bs, const struct smk_huff8_t* t)
+	Return -1 on error.
+	Added: walks with bits peeked from the stream, skipping them at the end,
+	instead of reading (and recursing) one bit at a time. */
+FAST_FUNC int16_t _smk_huff8_lookup(struct smk_bit_t* bs, const struct smk_huff8_t* t)
 {
-	char bit;
+	uint32_t v = smk_bs_peek(bs);
+	uint32_t n = 0;
 
-	/* sanity check */
-	smk_assert(bs);
-	smk_assert(t);
-
-	if (!t->b0)
+	while (t->b0)
 	{
-		/* Reached a Leaf node. Return its value. */
-		return t->u.leaf.value;
+		if (n == 25)
+		{
+			smk_bs_skip(bs, n);
+			v = smk_bs_peek(bs);
+			n = 0;
+		}
+		t = (v & 1) ? t->u.b1 : t->b0;
+		v >>= 1;
+		n ++;
 	}
-
-	/* Read the next bit from bitstream to determine path */
-	smk_bs_read_1(bs, bit);
-
-	if (bit)
-	{
-		/* get_bit returned Set, follow Right branch. */
-		return _smk_huff8_lookup(bs, t->u.b1);
-	}
-
-	/* follow Left branch */
-	return _smk_huff8_lookup(bs, t->b0);
-
-error:
-	return -1;
+	smk_bs_skip(bs, n);
+	return t->u.leaf.value;
 }
 
 /**
@@ -298,6 +334,55 @@ error:
 	return NULL;
 }
 
+/* Added: the number of subtable entries the subtree `node` needs, reached
+   at `depth` bits into a `bits` wide level */
+static uint32_t smk_huff16_table_count(const struct smk_huff8_t* node, uint32_t bits, uint32_t depth)
+{
+	if (!node->b0)
+		return 0;
+	if (depth == bits)
+		return (1u << SMK_SUB_BITS) + smk_huff16_table_count(node, SMK_SUB_BITS, 0);
+	return smk_huff16_table_count(node->b0, bits, depth + 1) + smk_huff16_table_count(node->u.b1, bits, depth + 1);
+}
+
+/* Added: fill the level at `off` (`bits` wide) with the subtree `node`,
+   reached by `code` (`depth` bits) within the level. */
+static int smk_huff16_table_fill(struct smk_huff16_t* big, uint32_t off, uint32_t bits, const struct smk_huff8_t* node, uint32_t depth, uint32_t code)
+{
+	if (!node->b0)
+	{
+		const uint32_t esc = node->u.leaf.escapecode <= 2 ? node->u.leaf.escapecode : SMK_ESC_NONE;
+		const uint32_t e = node->u.leaf.value | (depth << 16) | (esc << 21);
+		uint32_t r;
+		for (r = 0; r < (1u << (bits - depth)); r ++)
+			big->table[off + (code | (r << depth))] = e;
+		return 0;
+	}
+	if (depth == bits)
+	{
+		const uint32_t sub = big->table_len;
+		big->table_len += 1u << SMK_SUB_BITS;
+		big->table[off + code] = SMK_SUB_FLAG | sub;
+		return smk_huff16_table_fill(big, sub, SMK_SUB_BITS, node, 0, 0);
+	}
+	if (smk_huff16_table_fill(big, off, bits, node->b0, depth + 1, code)) return -1;
+	return smk_huff16_table_fill(big, off, bits, node->u.b1, depth + 1, code | (1u << depth));
+}
+
+/* Added: build the lookup tables from the tree, then drop the tree */
+static int smk_huff16_table(struct smk_huff16_t* big)
+{
+	const uint32_t n = (1u << SMK_ROOT_BITS) + smk_huff16_table_count(big->t, SMK_ROOT_BITS, 0);
+	big->table = (uint32_t*)malloc(n * sizeof(uint32_t));
+	if (!big->table) return -1;
+	big->table_len = 1u << SMK_ROOT_BITS;
+	if (smk_huff16_table_fill(big, 0, SMK_ROOT_BITS, big->t, 0, 0)) return -1;
+	smk_pool_free(big->pool);
+	big->pool = NULL;
+	big->t = NULL;
+	return 0;
+}
+
 /* Entry point for building a big 16-bit tree. */
 struct smk_huff16_t* _smk_huff16_build(struct smk_bit_t* bs)
 {
@@ -352,6 +437,13 @@ struct smk_huff16_t* _smk_huff16_build(struct smk_bit_t* bs)
 	if (bit)
 	{
 		fputs("libsmacker::smk_huff16_build(bs) - ERROR: final get_bit returned 1\n", stderr);
+		goto error;
+	}
+
+	/* Added: decode through lookup tables */
+	if (smk_huff16_table(big))
+	{
+		fputs("libsmacker::smk_huff16_build(bs) - ERROR: out of memory for the lookup table\n", stderr);
 		goto error;
 	}
 
@@ -415,17 +507,35 @@ error:
 	return -1;
 }
 
-/* Convenience call-out for recursive bigtree lookup function */
-uint16_t _smk_huff16_lookup(struct smk_bit_t* bs, struct smk_huff16_t* big)
+/* Bigtree lookup (Added: through the lookup tables) */
+FAST_FUNC uint16_t _smk_huff16_lookup(struct smk_bit_t* bs, struct smk_huff16_t* big)
 {
-	/* sanity check */
-	smk_assert(bs);
-	smk_assert(big);
+	const uint32_t* table = big->table;
+	uint32_t bits = SMK_ROOT_BITS;
+	uint32_t off = 0;
+	uint32_t e, esc;
+	uint16_t val;
 
-	return _smk_huff16_lookup_rec(bs, big->cache, big->t);
+	for (;;)
+	{
+		e = table[off + (smk_bs_peek(bs) & ((1u << bits) - 1))];
+		if (!(e & SMK_SUB_FLAG))
+			break;
+		smk_bs_skip(bs, bits);
+		off = e & ~SMK_SUB_FLAG;
+		bits = SMK_SUB_BITS;
+	}
+	smk_bs_skip(bs, (e >> 16) & 0x1F);
 
-error:
-	return -1;
+	esc = (e >> 21) & 3;
+	val = esc == SMK_ESC_NONE ? (uint16_t)e : big->cache[esc];
+	if (big->cache[0] != val)
+	{
+		big->cache[2] = big->cache[1];
+		big->cache[1] = big->cache[0];
+		big->cache[0] = val;
+	}
+	return val;
 }
 
 /* Resets a Big hufftree cache */
@@ -449,6 +559,8 @@ void smk_huff16_free(struct smk_huff16_t* big)
  
 	/* free the subtree: its nodes are the pool's */
 	smk_pool_free(big->pool);
+	free(big->table);
+	big->table = NULL;
 	big->pool = NULL;
 	big->t = NULL;
 
