@@ -166,6 +166,16 @@ int jk_esp_engine_frame(void)
     }
     uint32_t now = jk_esp_time_ms();
     if (now - lastReport >= 5000) {
+        {
+            extern uint32_t rdMaterial_espLoads, rdMaterial_espLoadUs, rdMaterial_espLoadFails, rdMaterial_espPurges, rdMaterial_espPurgeAlls;
+            extern int rdMaterial_numCachedMaterials;
+            static uint32_t pl, pu, pf, pp, pa;
+            jk_esp_log("texcache: %d cached, %lu loads (%lu failed) in %lu ms, %lu purges, %lu full purges; psram+arena free %u KB",
+                       rdMaterial_numCachedMaterials, (unsigned long)(rdMaterial_espLoads - pl), (unsigned long)(rdMaterial_espLoadFails - pf),
+                       (unsigned long)((rdMaterial_espLoadUs - pu) / 1000), (unsigned long)(rdMaterial_espPurges - pp),
+                       (unsigned long)(rdMaterial_espPurgeAlls - pa), (unsigned)(jk_esp_psram_free() / 1024));
+            pl = rdMaterial_espLoads; pu = rdMaterial_espLoadUs; pf = rdMaterial_espLoadFails; pp = rdMaterial_espPurges; pa = rdMaterial_espPurgeAlls;
+        }
         jk_esp_log("frame %lu: isDDraw=%d menu=%p world=%p", (unsigned long)frames, jkGame_isDDraw,
                    (void*)Video_menuBuffer.surface_lock_alloc, (void*)sithWorld_g_pLastLoadedWorld);
         jk_esp_present_report();

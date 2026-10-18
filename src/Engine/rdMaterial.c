@@ -1,4 +1,7 @@
 #include "rdMaterial.h"
+#if defined(TARGET_ESP32)
+#include "jk_esp.h"
+#endif
 
 #include "General/stdString.h"
 #include "Engine/rdroid.h"
@@ -522,6 +525,11 @@ int rdMaterial_LoadEntry(char *pFilename, rdMaterial *pMat, int create_ddraw_sur
 #endif
 }
 
+#if defined(TARGET_ESP32)
+// texture cache statistics (Window_ESP32.c reports them)
+uint32_t rdMaterial_espLoads, rdMaterial_espLoadUs, rdMaterial_espLoadFails, rdMaterial_espPurges, rdMaterial_espPurgeAlls;
+#endif
+
 int rdMaterial_LoadEntry_Deferred(rdMaterial *material, int create_ddraw_surface, int gpu_mem, int partial)
 {
     // Added: No nullptr derefs
@@ -546,6 +554,10 @@ int rdMaterial_LoadEntry_Deferred(rdMaterial *material, int create_ddraw_surface
 #endif
 
     stdString_SafeStrCopy(tmp, material->mat_full_fpath, sizeof(tmp));
+#if defined(TARGET_ESP32)
+    const uint64_t espT0 = jk_esp_time_us();
+    if (!partial) rdMaterial_espLoads++;
+#endif
     rdMaterial_FreeEntry(material);
     //stdPlatform_Printf("rdMaterial_LoadEntry_Deferred %s\n", tmp);
     //_memset(material, 0, sizeof(rdMaterial));
@@ -565,6 +577,12 @@ int rdMaterial_LoadEntry_Deferred(rdMaterial *material, int create_ddraw_surface
             }
         }
     }
+#if defined(TARGET_ESP32)
+    if (!partial) {
+        rdMaterial_espLoadUs += (uint32_t)(jk_esp_time_us() - espT0);
+        if (!material->bDataLoaded) rdMaterial_espLoadFails++;
+    }
+#endif
     material->id = prevId;
     material->curCelNum = prevCelIdx;
 #if 0
@@ -1096,6 +1114,9 @@ int rdMaterial_PurgeMaterialCache()
 
     int purgedAnything = 0;
     int purgeLimit = 240;
+#if defined(TARGET_ESP32)
+    rdMaterial_espPurges++;
+#endif
     rdMaterial* pNextCachedMaterial = NULL;
     while (!purgedAnything) {
         for ( rdMaterial* pCacheMaterial = rdMaterial_pFirstMatCache; pCacheMaterial; pCacheMaterial = pNextCachedMaterial )
@@ -1138,6 +1159,9 @@ int rdMaterial_PurgeMaterialCache()
 int rdMaterial_PurgeEntireMaterialCache()
 {
     int res = 0;
+#if defined(TARGET_ESP32)
+    rdMaterial_espPurgeAlls++;
+#endif
 
     rdMaterial* pNextCachedMaterial = NULL;
     for (rdMaterial* pCacheMaterial = rdMaterial_pFirstMatCache; pCacheMaterial; pCacheMaterial = pNextCachedMaterial)

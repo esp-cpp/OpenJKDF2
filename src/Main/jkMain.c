@@ -683,6 +683,16 @@ LABEL_28:
         }
     }
 
+#ifdef STDBITMAP_PARTIAL_LOAD
+    // Added: the menu backgrounds (640x480, ~300 KB each) are dead weight in
+    // gameplay. Menus unload them when they close, but a level started
+    // without one (-autostart, a level change) kept every background the GUI
+    // modules loaded at startup; they come back on demand (EnsureData).
+    for (int i = 0; i < 35; i++) {
+        stdBitmap_UnloadData(jkGui_stdBitmaps[i]);
+    }
+#endif
+
     if ( jkMain_SetVideoMode() )
     {
         stdControl_SetActivation(1);

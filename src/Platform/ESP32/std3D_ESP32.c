@@ -168,7 +168,8 @@ void std3D_DrawMenu()
         h = pSrc->format.height < 480 ? pSrc->format.height : 480;
     }
     if (w <= 0 || h <= 0) return;
-#if defined(JK_ESP_FS_DEBUG)
+    // every 100th frame: a sparse count of non-zero pixels, so a log shows
+    // whether the world is being drawn at all (cheap: ~1k reads)
     {
         static uint32_t n = 0;
         if ((n++ % 100) == 0) {
@@ -181,7 +182,6 @@ void std3D_DrawMenu()
                        pSrc == Video_pSwWorldBuffer ? "world" : "menu", w, h, (unsigned long)nonzero, (w * h) / 97);
         }
     }
-#endif
     jk_esp_present_8bpp_overlay((const uint8_t*)pSrc->surface_lock_alloc, w, h, pSrc->format.rowSize,
                                 pOverlay, ow, oh, opitch, (const uint8_t*)stdDisplay_masterPalette);
 }
