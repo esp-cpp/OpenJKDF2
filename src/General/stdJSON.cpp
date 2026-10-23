@@ -99,8 +99,13 @@ static nlohmann::json stdJSON_OpenAndReadFile(const char* pFpath)
     }
 
     std::ifstream i(json_path);
-    i >> json_file;
+    // Added: parse without throwing; a corrupt or truncated file (e.g. power
+    // lost mid-write) reads as empty settings instead of terminating
+    nlohmann::json parsed = nlohmann::json::parse(i, nullptr, false);
     i.close();
+    if (!parsed.is_discarded() && parsed.is_object()) {
+        json_file = std::move(parsed);
+    }
 
     return json_file;
 }
