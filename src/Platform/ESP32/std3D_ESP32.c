@@ -221,4 +221,10 @@ void std3D_DrawUIBitmapRGBA(stdBitmap* pBmp, int mipIdx, flex_t dstX, flex_t dst
 void std3D_DrawUIBitmap(stdBitmap* pBmp, int mipIdx, flex_t dstX, flex_t dstY, rdRect* srcRect, flex_t scale, int bAlphaOverwrite) {}
 void std3D_DrawUIClearedRect(uint8_t palIdx, rdRect* dstRect) {}
 void std3D_DrawUIClearedRectRGBA(uint8_t color_r, uint8_t color_g, uint8_t color_b, uint8_t color_a, rdRect* dstRect) {}
-int std3D_IsReady() { return std3D_bHasInitted; }
+// Ready to present whenever the engine is up: the software rasterizer has no
+// device to lose. std3D_Shutdown runs when a level ends (Video_SwitchToGDI),
+// before the cutscene that follows it, and jkCutscene_smacker_process waits
+// for std3D_IsReady() on every frame: with the flag, the cutscene after a
+// level never advanced (a black screen, forever). The GL backend's flag
+// likewise survives std3D_Shutdown.
+int std3D_IsReady() { return 1; }
