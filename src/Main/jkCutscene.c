@@ -927,9 +927,13 @@ void jkCutscene_smacker_smusher_audio_queue() {
 // resume saw the whole pause as lag and decoded every missed frame back to
 // back -- seconds of audio at once, more than the packet queue holds, which
 // played out of order and looped. Shift the clocks past the pause, as the
-// cutscene's own pause (space) does.
+// cutscene's own pause (space) does. While that pause is on, the clocks are
+// held relative to when it started and its end adds the time back, menu
+// included, so they are left alone then.
 void jkCutscene_ESP32_SkipTime(uint64_t us)
 {
+    if (jkCutscene_55AA54)
+        return;
     if (last_displayFrame)
         last_displayFrame += (flex64_t)us;
     if (last_audioUs)
