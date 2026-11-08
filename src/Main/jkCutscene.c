@@ -921,6 +921,22 @@ void jkCutscene_smacker_smusher_audio_queue() {
     }
 }
 
+#ifdef TARGET_ESP32
+// Added: the emulator's pause menu parks the engine while a cutscene plays.
+// The cutscene clocks are wall time, so without this the frame after a
+// resume saw the whole pause as lag and decoded every missed frame back to
+// back -- seconds of audio at once, more than the packet queue holds, which
+// played out of order and looped. Shift the clocks past the pause, as the
+// cutscene's own pause (space) does.
+void jkCutscene_ESP32_SkipTime(uint64_t us)
+{
+    if (last_displayFrame)
+        last_displayFrame += (flex64_t)us;
+    if (last_audioUs)
+        last_audioUs += (flex64_t)us;
+}
+#endif
+
 int jkCutscene_smacker_process()
 {
     if ( !jkCutscene_isRendering )
