@@ -427,9 +427,12 @@ struct smk_huff16_t* _smk_huff16_build(struct smk_bit_t* bs)
 	/* Finally, call recursive function to retrieve the Bigtree. */
 	smk_huff16_build_rec(bs, big->cache, low8, hi8, &big->pool, big->t);
 
-	/* Done with 8-bit hufftrees, free them. */
+	/* Done with 8-bit hufftrees, free them. (NULL afterwards: the error path
+	   below frees what is left, and must not free these again) */
 	smk_huff8_free(hi8);
+	hi8 = NULL;
 	smk_huff8_free(low8);
+	low8 = NULL;
 
 	/* Check final end tag. */
 	smk_bs_read_1(bs, bit);
@@ -450,9 +453,12 @@ struct smk_huff16_t* _smk_huff16_build(struct smk_bit_t* bs)
 	return big;
 
 error:
-	smk_huff16_free(big);
-	smk_huff8_free(hi8);
-	smk_huff8_free(low8);
+	if (big)
+		smk_huff16_free(big);
+	if (hi8)
+		smk_huff8_free(hi8);
+	if (low8)
+		smk_huff8_free(low8);
 	return NULL;
 }
 
