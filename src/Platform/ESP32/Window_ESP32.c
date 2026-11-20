@@ -28,6 +28,15 @@
 #include <stdio.h>
 #include <string.h>
 
+// The gentle material (texture) cache eviction in jk_esp_engine_frame(); the
+// build may set both (see there).
+#ifndef JK_ESP_MATERIAL_PURGE_FREE_KB
+#define JK_ESP_MATERIAL_PURGE_FREE_KB 2560
+#endif
+#ifndef JK_ESP_MATERIAL_PURGE_AGE
+#define JK_ESP_MATERIAL_PURGE_AGE 900
+#endif
+
 extern int jkGuiBuildMulti_bRendering;
 
 int Window_lastXRel = 0;
@@ -149,12 +158,14 @@ int jk_esp_engine_frame(void)
 #endif
     // keep PSRAM headroom: the engine's own purge only runs on allocation
     // failure and then cascades down to evicting textures used a second ago.
-    // Evict gently here instead: materials unused for ~a minute, only when
-    // memory is getting tight.
-    if (jk_esp_psram_free() < 2560u * 1024) {
+    // Evict gently here instead: materials unused for JK_ESP_MATERIAL_PURGE_AGE
+    // rendered frames (~a minute), only when less than
+    // JK_ESP_MATERIAL_PURGE_FREE_KB is free (both set by the build: tab5-emu's
+    // components/jk/Kconfig, "Material (texture) cache"; 0 KB turns it off).
+    if (jk_esp_psram_free() < (size_t)JK_ESP_MATERIAL_PURGE_FREE_KB * 1024) {
         extern int rdMaterial_PurgeMaterialCacheOlderThan(int minAge);
         static uint32_t purgeCalls = 0;
-        int n = rdMaterial_PurgeMaterialCacheOlderThan(900);
+        int n = rdMaterial_PurgeMaterialCacheOlderThan(JK_ESP_MATERIAL_PURGE_AGE);
         if (n && (purgeCalls++ % 20) == 0) {
             jk_esp_log("material cache: evicted %d unused materials (psram free %u KB)", n, (unsigned)(jk_esp_psram_free() / 1024));
         }

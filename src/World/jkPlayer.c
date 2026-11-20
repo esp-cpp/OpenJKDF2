@@ -333,7 +333,7 @@ void jkPlayer_Shutdown()
 
         if (jkPlayer_aMotsInfos[i].polylineThing.model3)
         {
-            rdThing_FreeEntry(&jkPlayer_otherThings[i].polylineThing);
+            rdThing_FreeEntry(&jkPlayer_aMotsInfos[i].polylineThing); // Added: was jkPlayer_otherThings[i] (already zeroed above)
             jkPlayer_aMotsInfos[i].polylineThing.model3 = 0;
         }
 

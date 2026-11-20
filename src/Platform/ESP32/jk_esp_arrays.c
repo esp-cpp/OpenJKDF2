@@ -28,9 +28,9 @@
 #endif
 
 // X(pointer, element type, count). The counts are the static arrays' sizes
-// (symbols.syms for the generated globals); the AI actors, the rasterizer
-// pools and the directory cache take theirs from the build (tab5-emu's
-// components/jk/Kconfig, "Engine table sizes").
+// (symbols.syms for the generated globals); the AI actors and the directory
+// cache take theirs from the build (tab5-emu's components/jk/Kconfig, "Engine
+// table sizes"), the rasterizer pools from rdActive.h (or the build).
 #ifdef JKM_DSS
 #define JK_ESP_MOTS_ARRAYS(X) X(jkPlayer_aMotsInfos, jkPlayerInfo, NUM_JKPLAYER_THINGS)
 #else
@@ -79,6 +79,7 @@ static size_t jk_esp_arrays_layout(uint8_t* base)
     return off;
 }
 
+// (tab5-emu's debug allocation dump names the block's size with this)
 size_t jk_esp_arrays_bytes(void)
 {
     return jk_esp_arrays_size;
