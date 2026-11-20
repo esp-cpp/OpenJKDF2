@@ -32,6 +32,13 @@
     # #ifndef <define> so --gc-sections can strip the unused .bss array.
     heap_shadowed = { "sithComm_MsgTmpBuf": "SITHCOMM_HEAP_MSGBUF" }
 
+    # Added: arrays that are pointers to per-engine-session buffers when
+    # PLATFORM_SESSION_ARRAYS is set (see engine_config.h; the platform
+    # allocates them zeroed before the engine starts and frees them after it
+    # has shut down). Keep in sync with globals.h.cog and the reset below.
+    session_arrays = [ "sithSurface_aSurfaces", "jkPlayer_playerInfos", "jkPlayer_otherThings",
+                       "sithCollision_aCollisions", "aEntryStack" ]
+
     addrs = []
 
     f = open(symbols_fpath, "r")
@@ -93,6 +100,12 @@
             cog.outl("#ifndef %s // Added: heap-shadowed on some platforms" % heap_shadowed[name])
             cog.outl("%s %s%s MAYBE_UNUSED = %s;" % (c_type, name, c_type_post, c_val))
             cog.outl("#endif")
+        elif name in session_arrays:
+            cog.outl("#ifdef PLATFORM_SESSION_ARRAYS // Added: allocated for each engine session")
+            cog.outl("%s* %s MAYBE_UNUSED = NULL;" % (c_type, name))
+            cog.outl("#else")
+            cog.outl("%s %s%s MAYBE_UNUSED = %s;" % (c_type, name, c_type_post, c_val))
+            cog.outl("#endif")
         else:
             cog.outl("%s %s%s MAYBE_UNUSED = %s;" % (c_type, name, c_type_post, c_val))
 
@@ -107,6 +120,8 @@ void OpenJKDF2_Globals_Reset()
     import cog
 
     heap_shadowed = { "sithComm_MsgTmpBuf": "SITHCOMM_HEAP_MSGBUF" } # Added: keep in sync with above
+    session_arrays = [ "sithSurface_aSurfaces", "jkPlayer_playerInfos", "jkPlayer_otherThings",
+                       "sithCollision_aCollisions", "aEntryStack" ] # Added: keep in sync with above
 
     addrs = []
 
@@ -173,6 +188,13 @@ void OpenJKDF2_Globals_Reset()
             # Added: heap-shadowed globals have no .bss array to reset (the module
             # owning the shadow resets/frees it itself)
             cog.outl("#ifndef %s" % heap_shadowed[name])
+            cog.outl("_memset_inline(&%s, 0, sizeof(%s));" % (name, name))
+            cog.outl("#endif")
+        elif name in session_arrays:
+            # Added: a pointer under PLATFORM_SESSION_ARRAYS (sizeof() is not the array's)
+            cog.outl("#ifdef PLATFORM_SESSION_ARRAYS")
+            cog.outl("if (%s) _memset_inline(%s, 0, sizeof(*%s) * (%s));" % (name, name, name, c_type_post.strip()[1:-1]))
+            cog.outl("#else")
             cog.outl("_memset_inline(&%s, 0, sizeof(%s));" % (name, name))
             cog.outl("#endif")
         elif "NO_REINIT" in c_type or "NO_REINIT" in c_type_post:

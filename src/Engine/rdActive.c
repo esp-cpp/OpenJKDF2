@@ -6,16 +6,25 @@
 #include "jk.h"
 
 #ifdef RDRASTER_SOFTWARE_RENDERER
-// Software-rasterizer working pools. numActiveFaces caps at 0x3ff and numActiveSpans at
-// 0x7ff, so the pools hold 1024 faces (~512 KB) and 2048 spans (~176 KB). These are
-// present only when the software path is compiled in.
+// Software-rasterizer working pools. numActiveFaces caps at RDACTIVE_MAX_FACES-1 and
+// numActiveSpans at RDACTIVE_MAX_SPANS-1, so by default the pools hold 1024 faces (~512 KB)
+// and 2048 spans (~104 KB). These are present only when the software path is compiled in.
+// Added: the build may set the pool sizes (RDACTIVE_MAX_FACES / RDACTIVE_MAX_SPANS, see
+// rdActive.h).
 // TODO(integration): for TARGET_TWL / TARGET_DREAMCAST, gate the caps / place the pools
 // in extram to reclaim RAM (see PROGRESS.md).
-#define RDACTIVE_MAX_FACES 1024
-#define RDACTIVE_MAX_SPANS 2048
 
+#ifdef PLATFORM_SESSION_ARRAYS
+// Added: pointers to pools the platform allocates for an engine session (see
+// rdActive.h). With RDRASTER_SW_ZBUFFER the world is drawn by rdZRaster and these
+// pools are never used, so the platform does not allocate them at all; the
+// rasterizer below draws nothing while they are NULL.
+rdActiveFace* aActiveFaces = NULL;
+rdActiveSpan* aActiveSpans = NULL;
+#else
 static rdActiveFace aActiveFaces[RDACTIVE_MAX_FACES];
 static rdActiveSpan aActiveSpans[RDACTIVE_MAX_SPANS];
+#endif
 static int yCurScanLine;   // scanline currently being rasterized by rdActive_DrawScene
 
 // Exposed so the rdAFRaster draw callbacks can validate a span-list link points into the
@@ -30,8 +39,11 @@ int rdActive_Startup()
     // Working pools are re-populated from index 0 every frame (counters reset in
     // rdActive_AdvanceFrame), but zero them here so the soft-reset loop in main.c
     // never leaves stale pointers behind when swapping JK.EXE/JKM.EXE functionality.
-    _memset(aActiveFaces, 0, sizeof(aActiveFaces));
-    _memset(aActiveSpans, 0, sizeof(aActiveSpans));
+    // (Added: sized by the counts, not sizeof(): the pools may be pointers)
+    if (aActiveFaces)
+        _memset(aActiveFaces, 0, sizeof(rdActiveFace) * RDACTIVE_MAX_FACES);
+    if (aActiveSpans)
+        _memset(aActiveSpans, 0, sizeof(rdActiveSpan) * RDACTIVE_MAX_SPANS);
     yCurScanLine = 0;
 #endif
     return 1;
@@ -351,7 +363,7 @@ void rdActive_BuildSpans()
 // uninitialized callbacks — see the rdAFRaster Setup*NGon families still to be ported.
 int rdActive_AddActiveFace(rdProcEntry* pProcEntry)
 {
-    if ((uint32_t)numActiveFaces > 0x3ff)
+    if ((uint32_t)numActiveFaces > RDACTIVE_MAX_FACES - 1)   // JK: 0x3ff
         return 0;
 
     int geometryMode = pProcEntry->geometryMode;
@@ -599,6 +611,11 @@ void rdActive_BuildEdges()
 // finished edges, and step the surviving edges one scanline (re-sorting any that cross).
 void rdActive_DrawScene()
 {
+#ifdef PLATFORM_SESSION_ARRAYS
+    // Added: no pools this session (see the definitions above)
+    if (!aActiveFaces || !aActiveSpans)
+        return;
+#endif
     rdActive_BuildEdges();
 
     for (yCurScanLine = yMinEdge; (uint32_t)yCurScanLine <= (uint32_t)yMaxEdge; yCurScanLine++)

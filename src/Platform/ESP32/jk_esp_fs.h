@@ -30,6 +30,14 @@ int jk_esp_chdir(const char* path);
 // jk_esp_fs_dir_cache_reset() after creating directories.
 int jk_esp_fs_dir_might_exist(const char* abs_path);
 void jk_esp_fs_dir_cache_reset(void);
+// The cache's table is allocated with the engine's per-session arrays
+// (jk_esp_arrays.c): its size, and attach (mem: that many zeroed bytes) /
+// detach (NULL). Its capacity: the build may set JK_ESP_FS_DIRCACHE.
+#ifndef JK_ESP_FS_DIRCACHE
+#define JK_ESP_FS_DIRCACHE 512
+#endif
+size_t jk_esp_fs_dir_cache_bytes(void);
+void jk_esp_fs_dir_cache_attach(void* mem);
 
 #ifdef __cplusplus
 }

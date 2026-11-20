@@ -283,10 +283,24 @@
 #define STDCONF_LINEBUFFER_LEN (2048)
 #endif
 
+// Added: the build may set the AI actor pool size (-DSITHAI_MAX_ACTORS=n)
+#ifndef SITHAI_MAX_ACTORS
 #ifdef TARGET_RETRO_HOMEBREW
 #define SITHAI_MAX_ACTORS (128)
 #else
 #define SITHAI_MAX_ACTORS (256)
+#endif
+#endif
+
+// Added (ESP32): the engine's largest arrays are pointers to buffers the
+// platform layer allocates (zeroed) when the engine starts and frees when it
+// has shut down, instead of static .bss. The firmware runs one game at a time
+// but reserves every core's .bss all the time, so ~0.4 MB of static engine
+// state sat unused while the other cores ran. The list (and the allocation)
+// is in Platform/ESP32/jk_esp_arrays.c; each array keeps its static form on
+// the other targets.
+#ifdef TARGET_ESP32
+#define PLATFORM_SESSION_ARRAYS
 #endif
 
 #if defined(QOL_IMPROVEMENTS) && !defined(TARGET_RETRO_HOMEBREW)

@@ -233,10 +233,12 @@ sithSound* sithSound_GetFromIdx(int idx)
 }
 
 
-#ifdef TARGET_RETRO_HOMEBREW
+#if defined(TARGET_RETRO_HOMEBREW) && !defined(TARGET_ESP32)
 // Added: fileRead byte-writes into the destination, but long-sound PCM may live
 // in word-addressable-only memory (DC VRAM arena). Bounce those through a chunk
-// buffer with word-safe copies; everything else reads direct.
+// buffer with word-safe copies; everything else reads direct. (Not on ESP32: all
+// of its memory takes byte stores, stdPlatform_IsWordAddressableOnly() is always
+// 0 there, and the 16 KB bounce buffer was never used.)
 static int sithSound_ReadIntoBuffer(int fd, void* pDst, int len)
 {
     if (!stdPlatform_IsWordAddressableOnly(pDst))

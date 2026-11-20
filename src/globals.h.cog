@@ -94,7 +94,18 @@ typedef struct embeddedResource_t
             c_type = s[0]
             c_type_post = "[" + s[1] 
         
-        cog.outl("extern %s %s%s MAYBE_UNUSED;" % (c_type, name, c_type_post))
+        # Added: pointers to per-engine-session buffers under PLATFORM_SESSION_ARRAYS
+        # (keep in sync with globals.c.cog)
+        session_arrays = [ "sithSurface_aSurfaces", "jkPlayer_playerInfos", "jkPlayer_otherThings",
+                           "sithCollision_aCollisions", "aEntryStack" ]
+        if name in session_arrays:
+            cog.outl("#ifdef PLATFORM_SESSION_ARRAYS")
+            cog.outl("extern %s* %s MAYBE_UNUSED;" % (c_type, name))
+            cog.outl("#else")
+            cog.outl("extern %s %s%s MAYBE_UNUSED;" % (c_type, name, c_type_post))
+            cog.outl("#endif")
+        else:
+            cog.outl("extern %s %s%s MAYBE_UNUSED;" % (c_type, name, c_type_post))
 
 ]]]
 [[[end]]]

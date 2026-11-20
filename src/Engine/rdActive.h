@@ -18,12 +18,26 @@ void rdActive_AdvanceFrame();
 void rdActive_ClearFrameCounters();
 
 #ifdef RDRASTER_SOFTWARE_RENDERER
+// Added: working-pool sizes (the build may set them; JK.EXE's are 1024 / 2048)
+#ifndef RDACTIVE_MAX_FACES
+#define RDACTIVE_MAX_FACES 1024
+#endif
+#ifndef RDACTIVE_MAX_SPANS
+#define RDACTIVE_MAX_SPANS 2048
+#endif
+
 void rdActive_DrawScene();
 void rdActive_BuildEdges();
 void rdActive_BuildSpans();
 void rdActive_FlushSpans();
 rdActiveSpan* rdActive_pSpanPoolBegin(void);
 rdActiveSpan* rdActive_pSpanPoolEnd(void);
+#ifdef PLATFORM_SESSION_ARRAYS
+// Added: the working pools, RDACTIVE_MAX_FACES / RDACTIVE_MAX_SPANS entries, set by the
+// platform before the engine starts (NULL when the build does not draw with them)
+extern rdActiveFace* aActiveFaces;
+extern rdActiveSpan* aActiveSpans;
+#endif
 // Defined by the rdAFRaster family (P3): dispatches a proc face to the setup routine
 // that matches its shading/surface/bit-depth and admits it to the active-face pool.
 int rdActive_AddActiveFace(rdProcEntry* pProcEntry);

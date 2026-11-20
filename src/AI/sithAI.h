@@ -44,8 +44,8 @@
 #define sithAI_CanDetectSightThing_ADDR (0x004EC140)
 
 extern int sithAI_bOpened;
-#ifdef TARGET_TWL
-extern SithAIControlBlock* sithAI_actors; // Added: heap'd (extram); see sithAI.c
+#if defined(TARGET_TWL) || defined(PLATFORM_SESSION_ARRAYS)
+extern SithAIControlBlock* sithAI_actors; // Added: heap'd (extram, or per session); see sithAI.c
 #else
 extern SithAIControlBlock sithAI_actors[SITHAI_MAX_ACTORS];
 #endif

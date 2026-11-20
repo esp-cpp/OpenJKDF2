@@ -55,7 +55,11 @@
 #define jkPlayer_SetRank_ADDR (0x004074E0)
 
 #ifdef JKM_DSS
+#ifdef PLATFORM_SESSION_ARRAYS
+extern jkPlayerInfo* jkPlayer_aMotsInfos; // Added: NUM_JKPLAYER_THINGS entries, allocated per session
+#else
 extern jkPlayerInfo jkPlayer_aMotsInfos[64];
+#endif
 extern jkBubbleInfo jkPlayer_aBubbleInfo[64];
 extern int jkPlayer_personality;
 extern flex_t jkPlayer_aMultiParams[0x100];

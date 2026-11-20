@@ -5,6 +5,7 @@
 #endif
 
 #include <math.h>
+#include <string.h> // Added: memset (was implicitly declared)
 #include "General/stdString.h"
 #include "General/stdFnames.h"
 #include "General/stdFileUtil.h"
@@ -83,7 +84,13 @@ int jkPlayer_bJankyPhysics = 0;
 #endif
 
 #ifdef JKM_DSS
+#ifdef PLATFORM_SESSION_ARRAYS
+// Added: allocated (zeroed) by the platform for each engine session
+// (Platform/ESP32/jk_esp_arrays.c), NUM_JKPLAYER_THINGS entries
+jkPlayerInfo* jkPlayer_aMotsInfos = NULL;
+#else
 jkPlayerInfo jkPlayer_aMotsInfos[NUM_JKPLAYER_THINGS] = {0};
+#endif
 jkBubbleInfo jkPlayer_aBubbleInfo[NUM_JKPLAYER_THINGS] = {0};
 int jkPlayer_personality = 0;
 flex_t jkPlayer_aMultiParams[0x100];
@@ -260,7 +267,8 @@ void jkPlayer_ResetVars()
 #endif
 
 #ifdef JKM_DSS
-    memset(jkPlayer_aMotsInfos, 0, sizeof(jkPlayer_aMotsInfos));
+    if (jkPlayer_aMotsInfos) // Added: may be a per-session pointer (PLATFORM_SESSION_ARRAYS)
+        memset(jkPlayer_aMotsInfos, 0, sizeof(jkPlayerInfo) * NUM_JKPLAYER_THINGS);
     memset(jkPlayer_aBubbleInfo, 0, sizeof(jkPlayer_aBubbleInfo));
     jkPlayer_personality = 0;
     memset(jkPlayer_aMultiParams, 0, sizeof(jkPlayer_aMultiParams));
@@ -316,7 +324,7 @@ void jkPlayer_Shutdown()
             jkPlayer_otherThings[i].polylineThing.model3 = 0;
         }
     }
-    _memset(jkPlayer_otherThings, 0, sizeof(jkPlayer_otherThings));
+    _memset(jkPlayer_otherThings, 0, sizeof(jkPlayerInfo) * NUM_JKPLAYER_THINGS); // Added: not sizeof(), it may be a pointer
 
 #ifdef JKM_DSS
     for (int i = 0; i < NUM_JKPLAYER_THINGS; i++)
@@ -333,7 +341,7 @@ void jkPlayer_Shutdown()
 
         rdThing_FreeEntry(&jkPlayer_aMotsInfos[i].rd_thing); // Added: fix memleak
     }
-    _memset(jkPlayer_aMotsInfos, 0, sizeof(jkPlayer_aMotsInfos));
+    _memset(jkPlayer_aMotsInfos, 0, sizeof(jkPlayerInfo) * NUM_JKPLAYER_THINGS); // Added: not sizeof(), it may be a pointer
 #endif
     //nullsub_28_free();
     

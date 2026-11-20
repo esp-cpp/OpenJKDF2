@@ -52,6 +52,10 @@ sithAIAlign sithAI_aAlignments[10] = {0}; // MoTS Added
 // Added: 84KB of .bss -> extram. Allocated once at sithAI_Startup; SithAIControlBlock is
 // all word-width fields (audited) and every clear below is word-safe.
 SithAIControlBlock* sithAI_actors = NULL;
+#elif defined(PLATFORM_SESSION_ARRAYS)
+// Added: SITHAI_MAX_ACTORS entries the platform allocates (zeroed) before the engine
+// starts and frees after it has shut down (Platform/ESP32/jk_esp_arrays.c)
+SithAIControlBlock* sithAI_actors = NULL;
 #else
 SithAIControlBlock sithAI_actors[SITHAI_MAX_ACTORS] = {0};
 #endif

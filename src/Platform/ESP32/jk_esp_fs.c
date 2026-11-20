@@ -75,16 +75,34 @@ int jk_esp_chdir(const char* path)
 // thousands of GOB-content lookups that probe the card first never repeat a
 // FatFs directory scan (each of those costs a block read per directory
 // sector).
-#define JK_ESP_FS_DIRCACHE 512
+// The table (JK_ESP_FS_DIRCACHE entries of JK_ESP_FS_DIRLEN + 1 bytes, 64.5 KB
+// by default) is not static: it is part of the engine's per-session arrays
+// (jk_esp_arrays.c), attached before the engine starts and detached after it
+// has shut down. Without it every directory "might exist" and the callers ask
+// the card directly: correct, only slower.
 #define JK_ESP_FS_DIRLEN 128
-static char jk_esp_fs_dirs[JK_ESP_FS_DIRCACHE][JK_ESP_FS_DIRLEN];
-static signed char jk_esp_fs_dir_state[JK_ESP_FS_DIRCACHE]; // 0 empty, 1 exists, -1 missing
+typedef char jk_esp_fs_dir_t[JK_ESP_FS_DIRLEN];
+static jk_esp_fs_dir_t* jk_esp_fs_dirs = NULL;
+static signed char* jk_esp_fs_dir_state = NULL; // 0 empty, 1 exists, -1 missing
 static int jk_esp_fs_dir_count = 0;
 uint32_t jk_esp_fs_dir_hits = 0, jk_esp_fs_dir_misses = 0, jk_esp_fs_dir_overflow = 0;
 
+size_t jk_esp_fs_dir_cache_bytes(void)
+{
+    return (size_t)JK_ESP_FS_DIRCACHE * (sizeof(jk_esp_fs_dir_t) + sizeof(signed char));
+}
+
+void jk_esp_fs_dir_cache_attach(void* mem)
+{
+    jk_esp_fs_dirs = (jk_esp_fs_dir_t*)mem;
+    jk_esp_fs_dir_state = mem ? (signed char*)(jk_esp_fs_dirs + JK_ESP_FS_DIRCACHE) : NULL;
+    jk_esp_fs_dir_cache_reset();
+}
+
 void jk_esp_fs_dir_cache_reset(void)
 {
-    memset(jk_esp_fs_dir_state, 0, sizeof(jk_esp_fs_dir_state));
+    if (jk_esp_fs_dir_state)
+        memset(jk_esp_fs_dir_state, 0, JK_ESP_FS_DIRCACHE);
     jk_esp_fs_dir_count = 0;
 }
 
@@ -97,7 +115,7 @@ static uint32_t jk_esp_fs_hash(const char* s, size_t n)
 
 int jk_esp_fs_dir_might_exist(const char* abs_path)
 {
-    if (!abs_path) return 1;
+    if (!abs_path || !jk_esp_fs_dir_state) return 1;
     const char* slash = strrchr(abs_path, '/');
     if (!slash || slash == abs_path) return 1;
     size_t dlen = (size_t)(slash - abs_path);
