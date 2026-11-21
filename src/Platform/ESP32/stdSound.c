@@ -283,6 +283,17 @@ void stdSound_ESP32_Pump(void)
     }
 }
 
+// The port, once the engine and its audio task have stopped: the mix buffer is
+// made once per process; free it so it is not left in the middle of the PSRAM
+// heap after the game (the next startup makes a new one)
+void stdSound_ESP32_Release(void)
+{
+    free(stdSound_pMixBuf);
+    stdSound_pMixBuf = NULL;
+    stdSound_bInitted = 0;
+    stdSound_pendingOff = stdSound_pendingLen = 0;
+}
+
 // Periodic diagnostics (called from the engine's frame report)
 void stdSound_ESP32_Report(void)
 {

@@ -1174,6 +1174,11 @@ FILE *input_file;
 #endif
 
     {
+#ifdef TARGET_ESP32
+    /* (as newer flex does: sithCogParse_ESP32_ReleaseLexer may have freed it) */
+    if ( ! yy_current_buffer )
+        yy_current_buffer = yy_create_buffer( (FILE*)yyin, YY_BUF_SIZE );
+#endif
     yy_init_buffer( yy_current_buffer, input_file );
     yy_load_buffer_state();
     }
@@ -1303,3 +1308,16 @@ FILE *file;
     }
 # line 89 "cog.l"
 
+#ifdef TARGET_ESP32
+/* ESP32: the lexer's input buffer (YY_BUF_SIZE) is made by the first parse
+ * and kept for the process. The port frees it when the engine has stopped:
+ * made during the first level load, it otherwise stays in the middle of the
+ * PSRAM heap after the game and splits its largest free block. The next parse
+ * makes a new one (yyrestart / yylex). */
+void sithCogParse_ESP32_ReleaseLexer(void)
+{
+    if ( yy_current_buffer )
+        yy_delete_buffer( yy_current_buffer );
+    yy_init = 1;
+}
+#endif
