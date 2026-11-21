@@ -80,7 +80,7 @@ int jk_esp_engine_load(const char* path)
     }
     if (!sithWorld_g_pStaticWorld) {
         // Still in the intro: the engine has not shown its title (which
-        // reads static.jkl: jkMain_GameplayShow now does that for a level
+        // reads static.jkl: jkMain_UnkShow now does that for a level
         // reached without it) nor its Players dialog, which reads the
         // player's profile (controls, options). Read the one the dialog
         // would offer (the last player, from the registry); without one the
@@ -98,8 +98,9 @@ int jk_esp_engine_load(const char* path)
     jkSmack_gameMode = 1; // "load a save" flavour of the level switch
     int ok = jkMain_sub_4034D0(header.episodeName, (char*)path, header.jklName, label);
     // The switch happens once no engine menu is open (jkMain_GuiAdvance);
-    // at the main menu (or the Players dialog, Single Player, Setup...)
-    // close them, as the engine's own Load does by returning from them.
+    // at the main menu (or the Players dialog, Single Player, Setup, the Esc
+    // menu, a tally or Force screen...) close them, as the engine's own Load
+    // does by returning from them.
     if (ok && jkGuiRend_thing_five) {
         jk_esp_log("load: closing the engine's menus first");
         jkGuiRend_ESP32_bCloseMenus = 1;

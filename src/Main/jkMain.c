@@ -496,6 +496,12 @@ void jkMain_EndLevelScreenShow(int a1, int a2)
         }
     }
 
+#ifdef TARGET_ESP32
+    // Added: the tally / Force screen was closed for a pending load (see
+    // jkGuiRend_ESP32_bCloseMenus); the main menu would replace that switch
+    if ( jkGuiRend_ESP32_bCloseMenus )
+        return;
+#endif
     if ( jkGuiRend_thing_five )
         jkGuiRend_thing_four = 1;
     jkSmack_stopTick = 1;
@@ -512,6 +518,26 @@ void jkMain_EndLevelScreenLeave(int a1, int a2)
 {
     ;
 }
+
+#ifdef TARGET_ESP32
+// Added: a level needs the static world (static.jkl: the player's templates,
+// models, puppets and their keyframes) and the inventory bins (items.dat),
+// which jkMain_TitleShow loads before any menu can start one. A level reached
+// without the title (the tab5-emu pause menu loading a save while the intro
+// is still playing) got neither, and the save's first static keyframe (id
+// 0x8000 | n) dereferenced a NULL sithWorld_g_pStaticWorld in
+// sithKeyFrame_GetByIdx. Same as the title screen and
+// Main_StartupDedicated's level autostart. A no-op once the title has run.
+static int jkMain_ESP32_OpenStaticIfNoTitle(const char* pCaller)
+{
+    if ( sithWorld_g_pStaticWorld )
+        return 0;
+    stdPlatform_Printf("OpenJKDF2: %s: no title screen yet, opening static.jkl\n", pCaller);
+    sithOpenStatic("static.jkl");
+    jkHudInv_InitItems();
+    return 1;
+}
+#endif
 
 void jkMain_GameplayShow(int a1, int a2)
 {
@@ -559,20 +585,11 @@ void jkMain_GameplayShow(int a1, int a2)
             jkGuiTitle_ShowLoading(jkMain_aLevelJklFname, 0);
         }
 
-        // Added: a level needs the static world (static.jkl: the player's
-        // templates, models, puppets and their keyframes) and the inventory
-        // bins (items.dat), which jkMain_TitleShow loads before any menu can
-        // start one. A level reached without the title (the tab5-emu pause
-        // menu loading a save while the intro is still playing) got neither,
-        // and the save's first static keyframe (id 0x8000 | n) dereferenced
-        // a NULL sithWorld_g_pStaticWorld in sithKeyFrame_GetByIdx. Same as
-        // the title screen and Main_StartupDedicated's level autostart.
-        if ( !sithWorld_g_pStaticWorld )
-        {
-            stdPlatform_Printf("OpenJKDF2: %s: no title screen yet, opening static.jkl\n", __func__);
-            sithOpenStatic("static.jkl");
-            jkHudInv_InitItems();
-        }
+#ifdef TARGET_ESP32
+        // Added: fallback for a level reached without the title by any other
+        // way than jkMain_UnkShow (which opens the static world itself)
+        jkMain_ESP32_OpenStaticIfNoTitle(__func__);
+#endif
 
         // MOTS added:
         // jkEpisode_Shutdown
@@ -906,6 +923,12 @@ void jkMain_ChoiceShow(int a1, int a2)
 
     if ( jkGuiForce_Show(0, 0.0, 1, 0, &v1, 1) == -1 )
     {
+#ifdef TARGET_ESP32
+        // Added: closed for a pending load (see jkGuiRend_ESP32_bCloseMenus);
+        // the main menu would replace that switch
+        if ( jkGuiRend_ESP32_bCloseMenus )
+            return;
+#endif
         if ( jkGuiRend_thing_five )
             jkGuiRend_thing_four = 1;
         jkSmack_stopTick = 1;
@@ -929,6 +952,20 @@ void jkMain_ChoiceLeave(int a1, int a2)
 
 void jkMain_UnkShow(int a1, int a2)
 {
+#ifdef TARGET_ESP32
+    // Added: a save loaded before the title screen (from the intro, see
+    // jkMain_ESP32_OpenStaticIfNoTitle). Opened here, before jkMain_UnkTick
+    // mounts the save's episode GOB, so static.jkl resolves its files the way
+    // the title does (jkRes searches the episode directory before the
+    // resource GOBs, and the static world stays for the whole session), with
+    // the title's loading screen; the cutscene is closed by now.
+    if ( !sithWorld_g_pStaticWorld )
+    {
+        jkGuiTitle_ShowLoadingStatic();
+        jkMain_ESP32_OpenStaticIfNoTitle(__func__);
+        jkGuiTitle_LoadingFinalize();
+    }
+#endif
     jkPlayer_SetAmmoMaximums(0); // MOTS added
 }
 
@@ -1504,6 +1541,14 @@ void jkMain_VideoLeave(int a1, int a2)
     //    sithTime_Resume();
 
     jkCutscene_sub_421410();
+#ifdef TARGET_ESP32
+    // Added: a save loaded during an inter-level cutscene (the tab5-emu pause
+    // menu; the switch to JK_GAMEMODE_UNK is only ever a load): starting the
+    // next level here would replace it, as jkMain_GuiAdvance takes the state
+    // this sets over the one it is switching to
+    if ( a2 == JK_GAMEMODE_UNK )
+        return;
+#endif
     if ( a1 == JK_GAMEMODE_VIDEO3 || a1 == JK_GAMEMODE_VIDEO4 )
         jkMain_StartNextLevelInEpisode(0, 1);
 }

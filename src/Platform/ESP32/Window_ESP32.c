@@ -263,6 +263,12 @@ int Window_MessageLoop()
         Window_bFlipRequested = 1; // redraw after the pause
     }
     if (jk_esp_quit_requested) {
+        // Cancelling only the active menu is not enough: the main menu (and
+        // the Force / tally / new player screens) reopen on -1, so a quit at
+        // JK's main menu never got back to the frame loop and jk::deinit
+        // waited forever. The flag makes them return (see jkGUIRend.c); it is
+        // reset with the GUI at shutdown.
+        jkGuiRend_ESP32_bCloseMenus = 1;
         jkGuiRend_ESP32_CancelActiveMenu();
         return 0;
     }

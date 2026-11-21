@@ -649,6 +649,13 @@ int jkGuiForce_Show(int bCanSpendStars, int isMulti, int a4, char16_t* a5, int *
         clicked = jkGuiRend_DisplayAndReturnClicked(jkGuiForce_pMenu);
         if ( clicked == -1 )
         {
+#ifdef TARGET_ESP32
+            // Added: closing the menus for a pending load or a quit (see
+            // jkGuiRend_ESP32_bCloseMenus): the Yes/No below returns -1 too,
+            // so this screen would reopen forever
+            if ( jkGuiRend_ESP32_bCloseMenus )
+                break;
+#endif
             if ( !jkGuiDialog_YesNoDialog(jkStrings_GetUniStringWithFallback("GUI_ABORT_GAME"), jkStrings_GetUniStringWithFallback("GUI_CONFIRM_ABORTCD")) )
                 continue;
         }

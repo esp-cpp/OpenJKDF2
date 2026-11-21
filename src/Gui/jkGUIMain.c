@@ -284,6 +284,11 @@ void jkGuiMain_ShowCutscenes()
         }
     }
     while ( v4 != -1 );
+#ifdef TARGET_ESP32
+    // Added: closed for a pending load (see jkGuiRend_ESP32_bCloseMenus):
+    // going back to the main menu would replace that switch
+    if ( !jkGuiRend_ESP32_bCloseMenus )
+#endif
     jkMain_MenuReturn();
 LABEL_17:
     v7 = 0;

@@ -43,8 +43,12 @@ void jkGuiRend_ESP32_CancelActiveMenu(void)
 // menu does not close by itself for that (the original's jkGuiRend_thing_four
 // cancel is off for TARGET_RETRO_HOMEBREW, see below), so the load would wait
 // for the user to leave the menus -- and New Game would replace it. While set,
-// every menu returns -1 (back) and jkGuiMain_Show leaves its loop; cleared by
-// jkMain_GuiAdvance when the switch happens.
+// every menu returns -1 (back), the screens that would ask "abort?" or reopen
+// themselves on -1 (Force, tally, new player) return instead, jkGuiMain_Show
+// leaves its loop, and the state handlers that fall back to the main menu on
+// -1 keep the pending switch; cleared by jkMain_GuiAdvance when the switch
+// happens. Also set by a quit from outside the engine (Window_MessageLoop):
+// the same loops are what kept a quit at the main menu from returning.
 int jkGuiRend_ESP32_bCloseMenus = 0;
 #endif
 static tVBuffer* jkGuiRend_menuBuffer = NULL;
@@ -558,6 +562,11 @@ void jkGuiRend_Shutdown()
 
     jkGuiRend_thing_five = 0;
     jkGuiRend_thing_four = 0;
+#ifdef TARGET_ESP32
+    // Added: a quit (or a quit right after a load at a menu) ends the session
+    // before jkMain_GuiAdvance clears it; the next launch starts without it
+    jkGuiRend_ESP32_bCloseMenus = 0;
+#endif
     jkGuiRend_bIsSurfaceValid = 0;
     jkGuiRend_bInitted = 0;
     jkGuiRend_bOpen = 0;

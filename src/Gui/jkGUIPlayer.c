@@ -21,6 +21,9 @@
 #include "General/stdFnames.h"
 #include "General/stdFileUtil.h"
 #include "World/jkPlayer.h"
+#ifdef TARGET_ESP32
+#include "Devices/sithControl.h"
+#endif
 
 static int jkGuiPlayer_bInitted = 0;
 
@@ -350,7 +353,20 @@ void jkGuiPlayer_ShowNewPlayer(int a1)
             jkPlayer_CreateConf(jkGuiPlayer_awTmp_555D28);
         }
         if ( v7 < 0 )
+        {
+#ifdef TARGET_ESP32
+            // Added: closing the menus for a pending load or a quit (see
+            // jkGuiRend_ESP32_bCloseMenus). With no profile to go back to
+            // (v15) this dialog reopens until one is created, i.e. forever;
+            // leave with the default controls instead, since no profile was
+            // read. With profiles, going back to the list reads the selected
+            // one (its -1 case) and leaves.
+            if ( jkGuiRend_ESP32_bCloseMenus && v15 )
+                sithControl_DefaultInit();
+            else
+#endif
             v14 = 1;
+        }
     }
     while ( v14 );
     jkGuiRend_DarrayFree(&a1a);
