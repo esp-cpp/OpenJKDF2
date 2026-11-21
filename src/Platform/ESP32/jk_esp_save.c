@@ -6,6 +6,8 @@
 #include "Main/jkMain.h"
 #include "Main/jkSmack.h"
 #include "Gui/jkGUITitle.h"
+#include "Gui/jkGUIRend.h"
+#include "Devices/sithControl.h"
 #include "World/jkPlayer.h"
 #include "World/sithWorld.h"
 #include "Gameplay/sithPlayer.h"
@@ -76,9 +78,33 @@ int jk_esp_engine_load(const char* path)
     for (char16_t* p = header.saveName; *p; p++) {
         if (*p == u'~') { label = p + 1; break; }
     }
+    if (!sithWorld_g_pStaticWorld) {
+        // Still in the intro: the engine has not shown its title (which
+        // reads static.jkl: jkMain_GameplayShow now does that for a level
+        // reached without it) nor its Players dialog, which reads the
+        // player's profile (controls, options). Read the one the dialog
+        // would offer (the last player, from the registry); without one the
+        // controls have no bindings, so fall back to the defaults.
+        char name[32];
+        stdString_WcharToChar(name, jkPlayer_playerShortName, 31);
+        name[31] = 0;
+        jk_esp_log("load: no title yet, reading player profile '%s'", name);
+        if (!jkPlayer_ReadConf(jkPlayer_playerShortName)) {
+            jk_esp_log("load: no player profile, default controls");
+            sithControl_DefaultInit();
+        }
+    }
     jk_esp_log("load: switching to episode '%s' level '%s' for %s", header.episodeName, header.jklName, path);
     jkSmack_gameMode = 1; // "load a save" flavour of the level switch
-    return jkMain_sub_4034D0(header.episodeName, (char*)path, header.jklName, label);
+    int ok = jkMain_sub_4034D0(header.episodeName, (char*)path, header.jklName, label);
+    // The switch happens once no engine menu is open (jkMain_GuiAdvance);
+    // at the main menu (or the Players dialog, Single Player, Setup...)
+    // close them, as the engine's own Load does by returning from them.
+    if (ok && jkGuiRend_thing_five) {
+        jk_esp_log("load: closing the engine's menus first");
+        jkGuiRend_ESP32_bCloseMenus = 1;
+    }
+    return ok;
 }
 
 // Restart the current level. Like the engine's ESC menu "restart": restore

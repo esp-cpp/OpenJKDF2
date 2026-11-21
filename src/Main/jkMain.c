@@ -302,6 +302,9 @@ void jkMain_GuiAdvance()
     if ( jkSmack_stopTick && !jkGuiRend_thing_five )
     {
         jkGuiRend_thing_four = 0;
+#ifdef TARGET_ESP32
+        jkGuiRend_ESP32_bCloseMenus = 0; // Added: the switch it waited for happens now
+#endif
         v4 = jkSmack_currentGuiState;
         v5 = jkMain_aGuiStateFuncs[jkSmack_currentGuiState].leaveFunc;
         if ( v5 )
@@ -554,6 +557,21 @@ void jkMain_GameplayShow(int a1, int a2)
         {
             jkGui_copies_string(jkMain_aLevelJklFname);
             jkGuiTitle_ShowLoading(jkMain_aLevelJklFname, 0);
+        }
+
+        // Added: a level needs the static world (static.jkl: the player's
+        // templates, models, puppets and their keyframes) and the inventory
+        // bins (items.dat), which jkMain_TitleShow loads before any menu can
+        // start one. A level reached without the title (the tab5-emu pause
+        // menu loading a save while the intro is still playing) got neither,
+        // and the save's first static keyframe (id 0x8000 | n) dereferenced
+        // a NULL sithWorld_g_pStaticWorld in sithKeyFrame_GetByIdx. Same as
+        // the title screen and Main_StartupDedicated's level autostart.
+        if ( !sithWorld_g_pStaticWorld )
+        {
+            stdPlatform_Printf("OpenJKDF2: %s: no title screen yet, opening static.jkl\n", __func__);
+            sithOpenStatic("static.jkl");
+            jkHudInv_InitItems();
         }
 
         // MOTS added:

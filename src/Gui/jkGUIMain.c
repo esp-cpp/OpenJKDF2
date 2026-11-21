@@ -156,6 +156,12 @@ void jkGuiMain_Show()
         do
         {
             if (g_should_exit) return; // Added
+#ifdef TARGET_ESP32
+            // Added: a level switch requested from outside the menus (the
+            // tab5-emu pause menu loading a save) waits for this loop to end;
+            // leave it the way starting a game from the menus does
+            if (jkGuiRend_ESP32_bCloseMenus) break;
+#endif
 
             jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiMain_menu, &jkGuiMain_elements[2]);
             v1 = jkGuiRend_DisplayAndReturnClicked(&jkGuiMain_menu);

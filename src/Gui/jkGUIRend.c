@@ -36,6 +36,16 @@ void jkGuiRend_ESP32_CancelActiveMenu(void)
     if (jkGuiRend_activeMenu && !jkGuiRend_activeMenu->lastClicked)
         jkGuiRend_activeMenu->lastClicked = -1;
 }
+
+// tab5-emu: set when the platform asks for a GUI state switch while a modal
+// menu is open (the pause menu loading a save at the engine's main menu).
+// jkMain_GuiAdvance switches only once no menu is open, and on this target a
+// menu does not close by itself for that (the original's jkGuiRend_thing_four
+// cancel is off for TARGET_RETRO_HOMEBREW, see below), so the load would wait
+// for the user to leave the menus -- and New Game would replace it. While set,
+// every menu returns -1 (back) and jkGuiMain_Show leaves its loop; cleared by
+// jkMain_GuiAdvance when the switch happens.
+int jkGuiRend_ESP32_bCloseMenus = 0;
 #endif
 static tVBuffer* jkGuiRend_menuBuffer = NULL;
 static tVBuffer *jkGuiRend_texture_dword_8561E8 = NULL;
@@ -343,6 +353,10 @@ int32_t jkGuiRend_DisplayAndReturnClicked(jkGuiMenu *menu)
     while ( !menu->lastClicked )
     {
         msgret = Window_MessageLoop();
+#ifdef TARGET_ESP32
+        if ( jkGuiRend_ESP32_bCloseMenus )
+            menu->lastClicked = -1;
+#endif
         if ( jkGuiRend_thing_four && jkGuiRend_thing_five )
         { 
             // Added: this makes the menu that appears when pressing ESC in jkGUISingleTally flicker,

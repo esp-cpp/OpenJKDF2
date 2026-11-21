@@ -84,6 +84,11 @@
 extern int32_t jkGuiRend_thing_five;
 extern int32_t jkGuiRend_thing_four;
 
+#ifdef TARGET_ESP32
+// tab5-emu: close the open modal menus for a pending GUI state switch (see jkGUIRend.c)
+extern int jkGuiRend_ESP32_bCloseMenus;
+#endif
+
 void jkGuiRend_CopyVBuffer(jkGuiMenu *menu, rdRect *rect);
 void jkGuiRend_SetPalette(uint8_t* pal);
 void jkGuiRend_DrawRect(tVBuffer *vbuf, rdRect *rect, __int16 color);
