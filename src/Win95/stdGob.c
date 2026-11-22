@@ -200,14 +200,19 @@ GobFileHandle* stdGob_FileOpen(Gob *pGob, const char *aName)
     if (data) {
         result = pGob->aHandles;
         v5 = 0;
-        if ( !pGob->numHandles )
+        // Added: free the loaded copy when no handle is free
+        if ( !pGob->numHandles ) {
+            free(data);
             return 0;
+        }
 
         while ( result->bUsed )
         {
             ++result;
-            if ( ++v5 >= pGob->numHandles )
+            if ( ++v5 >= pGob->numHandles ) {
+                free(data);
                 return 0;
+            }
         }
         result->bIsMemoryMapped = 1;
         result->pMemory = (intptr_t)data;

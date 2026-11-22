@@ -527,6 +527,17 @@ stdFile_t jkRes_FileOpen(const char *fpath, const char *mode)
             if ( v12 )
             {
                 v13 = resIdx;
+                // Added: a loose file in a later directory replaces an earlier hit
+                // (cutscenes rely on getting the real "resource\video\..." path), but
+                // the earlier handle was leaked: a FILE, or a GOB handle whose
+                // stdEmbeddedRes copy holds the whole file in memory (a 7 MB cutscene).
+                if ( v6 )
+                {
+                    if ( jkRes_aFiles[v13].useLowLevel )
+                        pLowLevelHS->fileClose(jkRes_aFiles[v13].fsHandle);
+                    else
+                        stdGob_FileClose(jkRes_aFiles[v13].gobHandle);
+                }
                 jkRes_aFiles[v13].useLowLevel = 1;
                 jkRes_aFiles[v13].fsHandle = v12;
                 stdString_SafeStrCopy(jkRes_aFiles[resIdx].fpath, jkRes_idkGobPath, 128);

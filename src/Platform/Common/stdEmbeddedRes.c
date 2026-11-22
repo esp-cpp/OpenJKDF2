@@ -59,9 +59,13 @@ for (int i = 0; i < strlen(tmp_filepath); i++)
 #if defined(TARGET_ESP32)
     // This runs for every GOB entry open; a real stat on the card costs a
     // FatFs directory scan each time. Consult the directory cache first.
+    // A loose file is read whole into memory here, which suits small overrides;
+    // a big one (a cutscene, checked before it plays) is left to jkRes, which
+    // opens resource/ files as streams.
     {
         const char* absPath = jk_esp_fs_path(tmp_filepath);
-        exists = jk_esp_fs_dir_might_exist(absPath) && (stat(absPath, &statstuff) >= 0);
+        exists = jk_esp_fs_dir_might_exist(absPath) && (stat(absPath, &statstuff) >= 0) &&
+                 statstuff.st_size <= 1024 * 1024;
     }
     if (!exists) {
         goto skip_fopen;
@@ -101,6 +105,8 @@ for (int i = 0; i < strlen(tmp_filepath); i++)
             char errtmp[256];
             snprintf(errtmp, 256, "Failed to read file `%s`!\n", filepath);
             stdEmbeddedRes_errmsg(errtmp);
+            free(file_contents); // Added: don't leak the copy and the file
+            fclose(f);
             return NULL;
         }
         file_contents[len] = 0;
@@ -212,6 +218,8 @@ retry_file:
             char errtmp[256];
             snprintf(errtmp, 256, "Failed to read file `%s`!\n", filepath);
             stdEmbeddedRes_errmsg(errtmp);
+            free(file_contents); // Added: don't leak the copy and the file
+            fclose(f);
             return NULL;
         }
         file_contents[len] = 0;
