@@ -1007,7 +1007,7 @@ int jkHudInv_Shutdown()
         jkHudInv_aBitmaps[2] = 0;
     }
 
-    for (int i = 0; i < 100; i++)
+    for (int i = 0; i < SITHBIN_NUMBINS; i++) // Added: all the bins jkHudInv_LoadItemRes loads (was 100)
     {
         if ( (sithInventory_g_aTypes[i].flags & 0xA) != 0 && sithInventory_g_aTypes[i].hudBitmap )
         {

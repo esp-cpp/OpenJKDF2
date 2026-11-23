@@ -151,25 +151,6 @@ int Window_RemoveMsgHandler(WindowHandler_t a1)
     return 1;
 }
 
-#ifdef TARGET_ESP32
-// Added: tab5-emu runs the engine more than once in a process. The handler
-// table outlived a session (stdControl's handler is never removed, and
-// jkGuiRend_Shutdown forgets the GUI's), but only the count was reset. The next
-// session's adds were refused as duplicates, so dispatch, which visits
-// g_handler_count slots, stopped before the GUI's handler. Keys and taps were
-// ignored at the menus (only the on-screen pad still worked: jkGuiRend_UpdateController
-// calls the GUI's handler directly), and Esc no longer opened the in-game menu.
-void Window_ESP32_ResetMsgHandlers(void)
-{
-    for (int i = 0; i < 16; i++)
-    {
-        Window_ext_handlers[i].handler = 0;
-        Window_ext_handlers[i].exists = 0;
-    }
-    g_handler_count = 0;
-}
-#endif
-
 int Window_AddDialogHwnd(HWND a1)
 {
     int v1; // eax

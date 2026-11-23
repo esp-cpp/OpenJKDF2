@@ -95,16 +95,15 @@ void Window_Main_Loop()
 
 int jk_esp_engine_startup(const char* game_dir)
 {
+    // Every engine global back to its boot value, as desktop's main.c does
+    // before each launch: tab5-emu runs the engine more than once per process.
+    // The session arrays (jk_esp_arrays_alloc, already made) keep their pointers
+    // and only have their contents zeroed (PLATFORM_SESSION_ARRAYS).
+    OpenJKDF2_Globals_Reset();
+
     char cmdLine[256];
     strncpy(cmdLine, jk_esp_engine_args(), sizeof(cmdLine) - 1);
     cmdLine[sizeof(cmdLine) - 1] = 0;
-
-    Window_ESP32_ResetMsgHandlers(); // the table too, not only the count (see Window.c)
-    g_thing_two_some_dialog_count = 0;
-    g_should_exit = 0;
-    g_window_not_destroyed = 0;
-    g_hInstance = 0;
-    g_nShowCmd = 0;
 
     // the engine opens everything relative to the working directory
     if (game_dir && game_dir[0]) {

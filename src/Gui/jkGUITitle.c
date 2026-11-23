@@ -105,6 +105,13 @@ void jkGuiTitle_Shutdown()
     // Added: clean reset
     memset(jkGuiTitle_versionBuffer, 0, sizeof(jkGuiTitle_versionBuffer));
     jkGuiTitle_loadPercent = 0;
+    for (int i = 0; i < 20; i++) // Added: the last level's loading-screen texts
+    {
+        if (jkGuiTitle_aTexts[i].str) {
+            STD_FREE(jkGuiTitle_aTexts[i].str);
+            jkGuiTitle_aTexts[i].str = NULL;
+        }
+    }
 }
 
 char jkGuiTitle_sub_4189A0(char *a1)
@@ -145,9 +152,9 @@ char16_t* jkGuiTitle_quicksave_related_func1(stdStrTable *strTable, char *jkl_fn
     // Added: cleanup
     for (int i = 0; i < 20; i++)
     {
-        if (texts->str) {
-            STD_FREE(texts->str);
-            texts->str = NULL;
+        if (jkGuiTitle_aTexts[i].str) { // Added: each text (was texts[0] twenty times)
+            STD_FREE(jkGuiTitle_aTexts[i].str);
+            jkGuiTitle_aTexts[i].str = NULL;
         }
     }
     _memset(jkGuiTitle_aTexts, 0, sizeof(jkGuiTitle_aTexts));
