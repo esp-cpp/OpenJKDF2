@@ -23,6 +23,9 @@ extern int Window_ySize;
 
 int Window_AddMsgHandler(WindowHandler_t a1);
 int Window_RemoveMsgHandler(WindowHandler_t a1);
+#ifdef TARGET_ESP32
+void Window_ESP32_ResetMsgHandlers(void);
+#endif
 int Window_AddDialogHwnd(HWND a1);
 int Window_msg_main_handler(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
 int Window_Main(HINSTANCE hInstance, int a2, char *lpCmdLine, int nShowCmd, LPCSTR lpWindowName);

@@ -23,6 +23,10 @@ int sithConsole_Startup(int maxCmds)
         {
             sithConsole_maxCmds = maxCmds;
             _memset(sithConsole_aCmds, 0, sizeof(stdDebugConsoleCmd) * maxCmds);
+            // Added: the count outlived the array; a second engine session in one
+            // process registered on top of the first one's count, and from the
+            // third on every command (cheats included) was refused as "full"
+            sithConsole_numRegisteredCmds = 0;
             DebugGui_fnPrint = 0;
             DebugGui_fnPrintUniStr = 0;
             sithCommand_Startup();

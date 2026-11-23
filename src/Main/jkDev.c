@@ -51,6 +51,7 @@ void jkDev_Startup()
 
     jkDev_cheatHashtable = stdHashtbl_New(JKDEV_NUM_CHEATS*2);
     _memset(jkDev_aCheatCmds, 0, sizeof(stdDebugConsoleCmd) * JKDEV_NUM_CHEATS);
+    jkDev_numCheats = 0; // Added: like sithConsole's count, it outlived the table
 
     sithConsole_RegisterCommand(jkDev_CmdVersion, "version", 0);
     sithConsole_RegisterCommand(jkDev_CmdTeam, "team", 0);

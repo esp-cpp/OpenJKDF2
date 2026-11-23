@@ -99,7 +99,7 @@ int jk_esp_engine_startup(const char* game_dir)
     strncpy(cmdLine, jk_esp_engine_args(), sizeof(cmdLine) - 1);
     cmdLine[sizeof(cmdLine) - 1] = 0;
 
-    g_handler_count = 0;
+    Window_ESP32_ResetMsgHandlers(); // the table too, not only the count (see Window.c)
     g_thing_two_some_dialog_count = 0;
     g_should_exit = 0;
     g_window_not_destroyed = 0;
