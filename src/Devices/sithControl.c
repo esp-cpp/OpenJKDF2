@@ -2410,6 +2410,23 @@ void sithControl_MapDefaultsJoystick() {
 
     sithControl_DefaultHelper(INPUT_FUNC_FIRE2, KEY_JOY1_B16, 2); // ltrig
     sithControl_DefaultHelper(INPUT_FUNC_FIRE1, KEY_JOY1_B17, 2); // rtrig
+#elif defined(TARGET_ESP32)
+    // tab5-emu: the touch pad's A/B/X/Y are B1-B4 (a USB gamepad's come in as
+    // keys, see jk_esp_read_input) and Select is B7, as on the other homebrew
+    // ports. A USB gamepad adds, as on desktop: L1 / R1 = previous / next
+    // weapon (B10 / B11, once it has shown triggers to fire with), and its
+    // d-pad as the hat: left / right = previous / next Force power, up = use
+    // it (held). Down is free.
+    sithControl_DefaultHelper(INPUT_FUNC_FIRE1, KEY_JOY1_B1, 2); // a
+    sithControl_DefaultHelper(INPUT_FUNC_DUCK, KEY_JOY1_B2, 0); // b
+    sithControl_DefaultHelper(INPUT_FUNC_ACTIVATE, KEY_JOY1_B3, 2); // x
+    sithControl_BindControl(INPUT_FUNC_JUMP, KEY_JOY1_B4, 0); // y
+    sithControl_BindControl(INPUT_FUNC_USELASTSELECTED, KEY_JOY1_B7, 0); // select
+    sithControl_BindControl(INPUT_FUNC_PREVWEAPON, KEY_JOY1_B10, 0); // L1
+    sithControl_BindControl(INPUT_FUNC_NEXTWEAPON, KEY_JOY1_B11, 0); // R1
+    sithControl_BindControl(INPUT_FUNC_PREVSKILL, KEY_JOY1_HLEFT, 0);
+    sithControl_BindControl(INPUT_FUNC_NEXTSKILL, KEY_JOY1_HRIGHT, 0);
+    sithControl_DefaultHelper(INPUT_FUNC_USESKILL, KEY_JOY1_HUP, 2);
 #elif defined(TARGET_RETRO_HOMEBREW) // TODO split out analog vs no analog controls
     sithControl_BindControl(INPUT_FUNC_FORWARD, KEY_JOY1_HUP, 0);
     sithControl_BindControl(INPUT_FUNC_NEXTSKILL, KEY_JOY1_HDOWN, 0);

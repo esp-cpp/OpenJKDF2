@@ -724,7 +724,8 @@ void stdControl_ReadControls()
     // gamepad's A/B/X/Y already arrive as keys (jk_esp_read_input), so the
     // joystick binds get the touch pad's only (joy_buttons): both at once
     // doubled each action, and B (jump) plus B2 (duck) made a crouched jump.
-    const uint16_t buttons = jkGuiRend_ESP32_MenuActive() ? in.buttons : in.joy_buttons;
+    const int in_menu = jkGuiRend_ESP32_MenuActive();
+    const uint16_t buttons = in_menu ? in.buttons : in.joy_buttons;
     uint16_t keys_held = 0;
     if (buttons & (1<<0)) keys_held |= KEY_A;
     if (buttons & (1<<1)) keys_held |= KEY_B;
@@ -736,6 +737,10 @@ void stdControl_ReadControls()
     if (buttons & (1<<7)) keys_held |= KEY_DOWN;
     if (buttons & (1<<8)) keys_held |= KEY_LEFT;
     if (buttons & (1<<9)) keys_held |= KEY_RIGHT;
+    // in play bits 10 / 11 are the USB gamepad's L1 / R1 alone (weapons), see
+    // jk_esp_read_input; JK's menus don't read B10 / B11
+    if (buttons & (1<<10)) keys_held |= KEY_L;
+    if (buttons & (1<<11)) keys_held |= KEY_R;
     // the Select + X noclip combo below works from either pad
     const uint16_t keys_combo = ((in.buttons & (1<<2)) ? KEY_X : 0) | ((in.buttons & (1<<4)) ? KEY_SELECT : 0);
     static uint16_t keys_held_last = 0;
@@ -800,13 +805,16 @@ void stdControl_ReadControls()
         stdControl_UpdateKeyState(KEY_JOY1_B7, !!(keys_held & KEY_SELECT) /* button val */, stdControl_curReadTime);
         //stdControl_UpdateKeyState(KEY_JOY1_B8, !!(keys_held & KEY_START) /* button val */, stdControl_curReadTime);
 
-        // the d-pad / left stick arrive as the engine's W/A/S/D keys (see
-        // jk_esp_read_input); the joystick hat is not fed, its default binds
-        // would turn instead of strafe
-        stdControl_UpdateKeyState(KEY_JOY1_HLEFT,  0, stdControl_curReadTime);
-        stdControl_UpdateKeyState(KEY_JOY1_HUP,    0, stdControl_curReadTime);
-        stdControl_UpdateKeyState(KEY_JOY1_HRIGHT, 0, stdControl_curReadTime);
-        stdControl_UpdateKeyState(KEY_JOY1_HDOWN,  0, stdControl_curReadTime);
+        // Movement arrives as the engine's W/A/S/D keys (the left stick, and the
+        // d-pad on a pad without a hat switch, see jk_esp_read_input). The hat
+        // is the USB gamepad's d-pad alone (in.dpad): Force powers in play
+        // (the ESP32 binds in sithControl_MapDefaultsJoystick). JK's menus
+        // navigate with the d-pad as keys (Window_ESP32.c), so not with it.
+        const int hat = in_menu ? 0 : in.dpad;
+        stdControl_UpdateKeyState(KEY_JOY1_HLEFT,  !!(hat & 4), stdControl_curReadTime);
+        stdControl_UpdateKeyState(KEY_JOY1_HUP,    !!(hat & 1), stdControl_curReadTime);
+        stdControl_UpdateKeyState(KEY_JOY1_HRIGHT, !!(hat & 8), stdControl_curReadTime);
+        stdControl_UpdateKeyState(KEY_JOY1_HDOWN,  !!(hat & 2), stdControl_curReadTime);
 
         if (keys_held & KEY_LEFT) {
             //stdControl_aAxisStates[AXIS_JOY1_X] = -0x7FFF;
