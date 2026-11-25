@@ -50,6 +50,13 @@ void jkGuiRend_ESP32_CancelActiveMenu(void)
 // happens. Also set by a quit from outside the engine (Window_MessageLoop):
 // the same loops are what kept a quit at the main menu from returning.
 int jkGuiRend_ESP32_bCloseMenus = 0;
+
+// Added: whether one of JK's menus is open. Their input reads take every
+// gamepad button as a joystick button (see Platform/ESP32/stdControl.c).
+int jkGuiRend_ESP32_MenuActive(void)
+{
+    return jkGuiRend_activeMenu != NULL;
+}
 #endif
 static tVBuffer* jkGuiRend_menuBuffer = NULL;
 static tVBuffer *jkGuiRend_texture_dword_8561E8 = NULL;

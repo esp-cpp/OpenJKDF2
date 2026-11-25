@@ -5,6 +5,7 @@
 #include "stdPlatform.h"
 #include "Main/jkQuakeConsole.h"
 #include "Main/jkDev.h"
+#include "Gui/jkGUIRend.h"
 
 #include "jk_esp.h"
 
@@ -718,17 +719,25 @@ void stdControl_ReadControls()
     enum { KEY_A = 1<<0, KEY_B = 1<<1, KEY_SELECT = 1<<2, KEY_START = 1<<3, KEY_RIGHT = 1<<4,
            KEY_LEFT = 1<<5, KEY_UP = 1<<6, KEY_DOWN = 1<<7, KEY_R = 1<<8, KEY_L = 1<<9,
            KEY_X = 1<<10, KEY_Y = 1<<11 };
+    // JK's menus take every gamepad button as a joystick button (B1 enter, B2
+    // back, B3 the default button; the binding screens). In play the USB
+    // gamepad's A/B/X/Y already arrive as keys (jk_esp_read_input), so the
+    // joystick binds get the touch pad's only (joy_buttons): both at once
+    // doubled each action, and B (jump) plus B2 (duck) made a crouched jump.
+    const uint16_t buttons = jkGuiRend_ESP32_MenuActive() ? in.buttons : in.joy_buttons;
     uint16_t keys_held = 0;
-    if (in.buttons & (1<<0)) keys_held |= KEY_A;
-    if (in.buttons & (1<<1)) keys_held |= KEY_B;
-    if (in.buttons & (1<<2)) keys_held |= KEY_X;
-    if (in.buttons & (1<<3)) keys_held |= KEY_Y;
-    if (in.buttons & (1<<4)) keys_held |= KEY_SELECT;
-    if (in.buttons & (1<<5)) keys_held |= KEY_START;
-    if (in.buttons & (1<<6)) keys_held |= KEY_UP;
-    if (in.buttons & (1<<7)) keys_held |= KEY_DOWN;
-    if (in.buttons & (1<<8)) keys_held |= KEY_LEFT;
-    if (in.buttons & (1<<9)) keys_held |= KEY_RIGHT;
+    if (buttons & (1<<0)) keys_held |= KEY_A;
+    if (buttons & (1<<1)) keys_held |= KEY_B;
+    if (buttons & (1<<2)) keys_held |= KEY_X;
+    if (buttons & (1<<3)) keys_held |= KEY_Y;
+    if (buttons & (1<<4)) keys_held |= KEY_SELECT;
+    if (buttons & (1<<5)) keys_held |= KEY_START;
+    if (buttons & (1<<6)) keys_held |= KEY_UP;
+    if (buttons & (1<<7)) keys_held |= KEY_DOWN;
+    if (buttons & (1<<8)) keys_held |= KEY_LEFT;
+    if (buttons & (1<<9)) keys_held |= KEY_RIGHT;
+    // the Select + X noclip combo below works from either pad
+    const uint16_t keys_combo = ((in.buttons & (1<<2)) ? KEY_X : 0) | ((in.buttons & (1<<4)) ? KEY_SELECT : 0);
     static uint16_t keys_held_last = 0;
     //if((keys_held & KEY_UP)) rotateX += 3;
     //if((keys_held & KEY_DOWN)) rotateX -= 3;
@@ -737,8 +746,8 @@ void stdControl_ReadControls()
     //if((keys & KEY_A)) fCamera -= 0.05f;
     //if((keys & KEY_B)) fCamera += 0.05f;
 
-    uint16_t keysPressed = keys_held & ~keys_held_last;
-    keys_held_last = keys_held;
+    uint16_t keysPressed = keys_combo & ~keys_held_last;
+    keys_held_last = keys_combo;
 
     //_memset(stdControl_aKeyIdleTimes, 0, sizeof(int) * JK_NUM_KEYS);
     stdControl_bControlsIdle = 1;
@@ -825,7 +834,7 @@ void stdControl_ReadControls()
             //stdPlatform_Printf("total %u heap 0x%x 0x%x\n", sampleTime_roundtrip, (intptr_t)getHeapLimit() - (intptr_t)getHeapEnd(), (intptr_t)getHeapEnd() - (intptr_t)getHeapStart());
         }
 //#ifdef DEBUG_QOL_CHEATS
-        if ((keysPressed & (KEY_X)) && (keys_held & KEY_SELECT)) {
+        if ((keysPressed & (KEY_X)) && (keys_combo & KEY_SELECT)) {
             jkDev_CmdNoclip(NULL, NULL);
         }
 //#endif
